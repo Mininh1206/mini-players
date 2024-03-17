@@ -1,0 +1,44 @@
+---
+import Layout from "../../layouts/Layout.astro";
+---
+
+<Layout title=".space">
+  <main class="flex flex-1 justify-center items-center">
+    <canvas id="canvas" class="w-[80vw] h-[80vh] bg-secondary"> </canvas>
+  </main>
+</Layout>
+
+<script>
+  const canvas = document.getElementById("canvas") as HTMLCanvasElement;
+  const ctx = canvas.getContext("2d");
+
+  if (ctx) {
+    const ships = {
+      "1": "https://picsum.photos/300/300",
+    };
+
+    const width = canvas.width;
+    const height = canvas.height;
+
+    let jugadores = [
+      {
+        x: Math.random() * width,
+        y: Math.random() * height,
+        ship: "1",
+      },
+      {
+        x: Math.random() * width,
+        y: Math.random() * height,
+        ship: "1",
+      },
+    ];
+
+    ctx.drawImage(ships[jugadores[0].ship], jugadores[0].x, jugadores[0].y)
+
+    for (let jugador in jugadores) {
+      const ship = new Image();
+      ship.src = ships[jugadores[jugador].ship];
+      ctx.drawImage(ship, jugadores[jugador].x, jugadores[jugador].y);
+    }
+  }
+</script>

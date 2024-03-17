@@ -1,6 +1,8 @@
 ---
+import MagnifierIcon from "../icons/magnifier.astro";
+
 interface Props {
-	title: string;
+  title: string;
 }
 
 const { title } = Astro.props;
@@ -8,28 +10,55 @@ const { title } = Astro.props;
 
 <!doctype html>
 <html lang="es">
-	<head>
-		<meta charset="UTF-8" />
-		<meta name="description" content="Página web de minijuegos hechos con JS" />
-		<meta name="viewport" content="width=device-width" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<meta name="generator" content={Astro.generator} />
-		<title>{title}</title>
-	</head>
-	<body>
-		<slot />
-	</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content="Página web de minijuegos hechos con JS" />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+  </head>
+  <body class="h-screen w-full">
+    <header class="w-full flex justify-center mb-14">
+      <nav class="w-[50vw] flex justify-between items-center py-2">
+        <h1 class="text-3xl"><a href="/">Bienvenido a Mini Players</a></h1>
+        <div class="relative w-[300px]">
+          <div
+            class="absolute inset-y-0 start-0 flex items-center ps-3.5 pointer-events-none"
+          >
+            <MagnifierIcon />
+          </div>
+          <input
+            type="text"
+            id="input-group-1"
+            class="h-8 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+            placeholder="Buscar"
+          />
+        </div>
+      </nav>
+    </header>
+    <slot />
+  </body>
 </html>
 <style is:global>
-	:root {
-		--primary-color: #3C486B;
-		--secondary-color: #F0F0F0;
-		--terciary-color: #F9D949;
-		--accent-color: #F45050;
-	}
-	html {
-		font-family: system-ui, sans-serif;
-		background: var(--primary-color);
-		background-size: 224px;
-	}
+  :root {
+    --primary-color: #3c486b;
+    --secondary-color: #f0f0f0;
+    --terciary-color: #f9d949;
+    --accent-color: #f45050;
+  }
+
+  @font-face {
+    font-family: "VT323";
+    src: url("/fonts/VT323-Regular.ttf") format("woff");
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+  }
+
+  html {
+    font-family: 'VT323', system-ui, sans-serif;
+    background: var(--primary-color);
+    color: var(--terciary-color);
+  }
 </style>
