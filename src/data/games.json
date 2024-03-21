@@ -5,12 +5,5 @@
         "normalized-name": "space",
         "description": "Enfréntate a otro jugador con tu mejor nave y demuestra tu capacidad de combate",
         "image": "https://picsum.photos/300/300"
-    },
-    {
-        "id": "e4de39ff-b1c2-4390-9874-30bf61e008dc",
-        "name": "Tetris",
-        "normalized-name": "tetris",
-        "description": "Tetris es un juego de lógica de tetraedros que te permite jugar con tu mejor mano.",
-        "image": "https://picsum.photos/300/300"
     }
 ]
