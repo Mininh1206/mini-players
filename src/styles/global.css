@@ -1,1 +1,23 @@
 @import "tailwindcss";
+@plugin "@iconify/tailwind4";
+
+:root {
+  --primary-color: #3c486b;
+  --secondary-color: #f0f0f0;
+  --terciary-color: #f9d949;
+  --accent-color: #f45050;
+}
+
+@font-face {
+  font-family: "VT323";
+  src: url("/fonts/VT323-Regular.ttf") format("woff");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+html {
+  font-family: "VT323", system-ui, sans-serif;
+  background: var(--primary-color);
+  color: var(--terciary-color);
+}

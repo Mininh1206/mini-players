@@ -4,6 +4,6 @@
         "name": "Tetris",
         "normalized-name": "tetris",
         "description": "Juega al clásico Tetris y pon a prueba tu habilidad para encajar piezas.",
-        "image": "/images/games/tetris.png"
+        "image": "/images/games/tetris.webp"
     }
 ]
