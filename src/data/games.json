@@ -1,9 +1,9 @@
 [
     {
         "id": "57f55ff7-588b-4747-bbe2-8c5d34d4f315",
-        "name": ".space",
-        "normalized-name": "space",
-        "description": "Enfréntate a otro jugador con tu mejor nave y demuestra tu capacidad de combate",
+        "name": "Tetris",
+        "normalized-name": "tetris",
+        "description": "Juega al clásico Tetris y pon a prueba tu habilidad para encajar piezas.",
         "image": "https://picsum.photos/300/300"
     }
 ]

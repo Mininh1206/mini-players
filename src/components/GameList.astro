@@ -1,9 +1,16 @@
 ---
 import data from "../data/games.json";
+const search = new URLSearchParams(Astro.url.search).get('search')?.toLowerCase() || '';
+const filtered = search
+	? data.filter(game =>
+		game.name.toLowerCase().includes(search) ||
+		game.description.toLowerCase().includes(search)
+	)
+	: data;
 ---
 
 {
-  data.map((game) => (
+  filtered.map((game) => (
     <div class="w-[200px] h-[200px]">
       <a class="w-full h-full flex relative rounded-lg overflow-hidden hover:scale-125 group transition" href=`/games/${game["normalized-name"]}`>
         <img
