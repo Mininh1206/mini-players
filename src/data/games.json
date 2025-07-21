@@ -4,6 +4,6 @@
         "name": "Tetris",
         "normalized-name": "tetris",
         "description": "Juega al clásico Tetris y pon a prueba tu habilidad para encajar piezas.",
-        "image": "https://picsum.photos/300/300"
+        "image": "/images/games/tetris.png"
     }
 ]
