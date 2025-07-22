@@ -1,5 +1,5 @@
 ---
-import '../styles/global.css' 
+import "../styles/global.css";
 
 interface Props {
   title: string;
@@ -17,16 +17,18 @@ const { title } = Astro.props;
     <link rel="icon" type="image/svg+xml" href="/favicon.webp" />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3615553983953486"
-     crossorigin="anonymous"></script>
+    <script
+      async
+      src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3615553983953486"
+      crossorigin="anonymous"></script>
   </head>
   <body class="h-screen w-full">
-    <header class="w-full flex justify-center mb-14">
+    <header class="absolute top-0 w-full flex justify-center">
       <nav class="max-w-[900px] w-full flex justify-between items-center py-2">
-        <div class="flex gap-6 items-center justify-center">
-          <img src="/images/logo.webp" alt="Mini Players" class="w-14 h-14">
-          <h1 class="text-3xl"><a href="/">Bienvenido a Mini Players</a></h1>
-        </div>
+        <a href="/" class="flex gap-6 items-center justify-center">
+          <img src="/images/logo.webp" alt="Mini Players" class="w-14 h-14" />
+          <h1 class="text-3xl">Bienvenido a Mini Players</h1>
+        </a>
         <div class="relative w-[300px]">
           <div
             class="absolute inset-y-0 start-0 flex items-center ps-3.5 pointer-events-none"
@@ -38,21 +40,69 @@ const { title } = Astro.props;
             id="input-group-1"
             class="h-8 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
             placeholder="Buscar"
-            onkeydown="if(event.key==='Enter'){window.location.href='/?search='+encodeURIComponent(this.value);}" 
-            value={new URLSearchParams(Astro.url.search).get('search') ?? ''}
+            onkeydown="if(event.key==='Enter'){window.location.href='/?search='+encodeURIComponent(this.value);}"
+            value={new URLSearchParams(Astro.url.search).get("search") ?? ""}
           />
         </div>
       </nav>
     </header>
-    <slot />
-    <footer class="w-full absolute bottom-0 flex justify-center mt-14 py-6 bg-gray-900 text-white">
+    <section class="flex grow justify-center items-center w-full h-full">
+      <script
+        async
+        src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3615553983953486"
+        crossorigin="anonymous"></script>
+      <!-- Banner Vertical 1 -->
+      <ins
+        class="adsbygoogle"
+        style="display:block"
+        data-ad-client="ca-pub-3615553983953486"
+        data-ad-slot="6851332810"
+        data-ad-format="auto"
+        data-full-width-responsive="true"></ins>
+      <script>
+        (adsbygoogle = window.adsbygoogle || []).push({});
+      </script>
+      <slot />
+      <script
+        async
+        src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3615553983953486"
+        crossorigin="anonymous"></script>
+      <!-- Banner Vertical 2 -->
+      <ins
+        class="adsbygoogle"
+        style="display:block"
+        data-ad-client="ca-pub-3615553983953486"
+        data-ad-slot="9285924461"
+        data-ad-format="auto"
+        data-full-width-responsive="true"></ins>
+      <script>
+        (adsbygoogle = window.adsbygoogle || []).push({});
+      </script>
+    </section>
+    <footer
+      class="absolute bottom-0 w-full justify-center mt-14 py-6 bg-gray-900 text-white"
+    >
       <div class="flex flex-col items-center gap-2">
-        <span>Proyecto en <a href="https://github.com/tu-usuario/mini-players" class="underline hover:text-blue-400" target="_blank">GitHub</a></span>
+        <span
+          >Proyecto en <a
+            href="https://github.com/tu-usuario/mini-players"
+            class="underline hover:text-blue-400"
+            target="_blank">GitHub</a
+          ></span
+        >
         <div class="flex gap-4">
-          <a href="https://www.linkedin.com/in/daniel-marchena-jim%C3%A9nez/" class="underline hover:text-blue-400" target="_blank">
+          <a
+            href="https://www.linkedin.com/in/daniel-marchena-jim%C3%A9nez/"
+            class="underline hover:text-blue-400"
+            target="_blank"
+          >
             <span class="icon-[mdi--linkedin]"></span>
           </a>
-          <a href="https://github.com/Mininh1206" class="underline hover:text-blue-400" target="_blank">
+          <a
+            href="https://github.com/Mininh1206"
+            class="underline hover:text-blue-400"
+            target="_blank"
+          >
             <span class="icon-[mdi--github]"></span>
           </a>
         </div>
