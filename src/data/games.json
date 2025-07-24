@@ -1,9 +1,9 @@
 [
     {
         "id": "57f55ff7-588b-4747-bbe2-8c5d34d4f315",
-        "name": "Tetris",
+        "name": "Clon de Tetris",
         "normalized-name": "tetris",
-        "description": "Juega al clásico Tetris y pon a prueba tu habilidad para encajar piezas.",
+        "description": "Juega al clon de Tetris de Nintendo. ¡Pon a prueba tu habilidad para encajar piezas!",
         "image": "/images/games/tetris.webp"
     }
 ]
