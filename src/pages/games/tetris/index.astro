@@ -2,26 +2,24 @@
 import Layout from "../../../layouts/Layout.astro";
 ---
 
-<Layout title="Tetris">
-	<main class="flex grow justify-center items-center w-full h-full">
-		<div class="flex flex-row gap-8 items-start bg-gray-800 p-6 rounded-lg shadow-lg">
-			<!-- Zona de juego -->
-			<div class="bg-black p-2 rounded-md border-4 border-gray-600 flex items-center justify-center">
-				<canvas id="canvas" width="300" height="600" class="block"></canvas>
+<Layout title="Clon de Tetris">
+	<div class="flex flex-row gap-8 items-start bg-gray-800 p-6 rounded-lg shadow-lg">
+		<!-- Zona de juego -->
+		<div class="bg-black p-2 rounded-md border-4 border-gray-600 flex items-center justify-center">
+			<canvas id="canvas" width="300" height="600" class="block"></canvas>
+		</div>
+		<!-- Panel derecho: Score y Next -->
+		<div class="flex flex-col gap-8 min-w-[120px]">
+			<div class="bg-gray-900 text-white rounded p-4 flex flex-col items-center">
+				<span class="text-xs">SCORE</span>
+				<span id="score" class="text-2xl font-mono">0</span>
 			</div>
-			<!-- Panel derecho: Score y Next -->
-			<div class="flex flex-col gap-8 min-w-[120px]">
-				<div class="bg-gray-900 text-white rounded p-4 flex flex-col items-center">
-					<span class="text-xs">SCORE</span>
-					<span id="score" class="text-2xl font-mono">0</span>
-				</div>
-				<div class="bg-gray-900 text-white rounded p-4 flex flex-col items-center">
-					<span class="text-xs">NEXT</span>
-					<canvas id="next" width="96" height="96" class="mt-2"></canvas>
-				</div>
+			<div class="bg-gray-900 text-white rounded p-4 flex flex-col items-center">
+				<span class="text-xs">NEXT</span>
+				<canvas id="next" width="96" height="96" class="mt-2"></canvas>
 			</div>
 		</div>
-	</main>
+	</div>
 	<script>
 		const canvas: HTMLCanvasElement = document.getElementById('canvas') as HTMLCanvasElement;
 		const context = canvas.getContext('2d');
@@ -92,7 +90,7 @@ import Layout from "../../../layouts/Layout.astro";
 		let board: (string | 0)[][];
 		let current: any;
 		let next: any;
-		let score: number;
+		let score: number = 0;
 		let gameOver: boolean = false;
 		let started: boolean = false;
 
@@ -165,6 +163,8 @@ import Layout from "../../../layouts/Layout.astro";
 		function drawNext() {
 			if (!nextCtx) return;
 			nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+
+			if (!next) return;
 			const {shape, type} = next;
 			const matrix = shape[0];
 			// Centrar la pieza en el canvas de next

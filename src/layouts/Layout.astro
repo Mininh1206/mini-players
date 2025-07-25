@@ -46,43 +46,52 @@ const { title } = Astro.props;
         </div>
       </nav>
     </header>
-    <section class="flex grow justify-center items-center w-full h-full">
-      <script
-        async
-        src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3615553983953486"
-        crossorigin="anonymous"></script>
-      <!-- Banner Vertical 1 -->
-      <ins
-        class="adsbygoogle"
-        style="display:block"
-        data-ad-client="ca-pub-3615553983953486"
-        data-ad-slot="6851332810"
-        data-ad-format="auto"
-        data-full-width-responsive="true"></ins>
-      <script defer>
-        (adsbygoogle = window.adsbygoogle || []).push({});
-      </script>
-      <slot />
-      <script
-        async
-        src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3615553983953486"
-        crossorigin="anonymous"></script>
-      <!-- Banner Vertical 2 -->
-      <ins
-        class="adsbygoogle"
-        style="display:block"
-        data-ad-client="ca-pub-3615553983953486"
-        data-ad-slot="9285924461"
-        data-ad-format="auto"
-        data-full-width-responsive="true"></ins>
-      <script defer>
-        (adsbygoogle = window.adsbygoogle || []).push({});
-      </script>
+    <section class="grid grid-cols-[1fr_4fr_1fr] w-full h-full p-20">
+      <aside>
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3615553983953486"
+          crossorigin="anonymous"></script>
+        <!-- Banner Vertical 1 -->
+        <ins
+          class="adsbygoogle"
+          style="display:block"
+          data-ad-client="ca-pub-3615553983953486"
+          data-ad-slot="6851332810"
+          data-ad-format="auto"
+          data-full-width-responsive="true"></ins>
+        <script defer>
+          (adsbygoogle = window.adsbygoogle || []).push({});
+        </script>
+      </aside>
+
+      <main
+        class="flex justify-center items-center"
+      >
+        <slot />
+      </main>
+      <aside>
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3615553983953486"
+          crossorigin="anonymous"></script>
+        <!-- Banner Vertical 2 -->
+        <ins
+          class="adsbygoogle"
+          style="display:block"
+          data-ad-client="ca-pub-3615553983953486"
+          data-ad-slot="9285924461"
+          data-ad-format="auto"
+          data-full-width-responsive="true"></ins>
+        <script defer>
+          (adsbygoogle = window.adsbygoogle || []).push({});
+        </script>
+      </aside>
     </section>
     <footer
-      class="absolute bottom-0 w-full justify-center mt-14 py-6 bg-gray-900 text-white"
+      class="absolute bottom-0 w-full justify-center mt-14 p-6 h-20 bg-gray-900 text-white"
     >
-      <div class="flex flex-col items-center gap-2">
+      <div class="flex items-center gap-2 justify-between">
         <span
           >Proyecto en <a
             href="https://github.com/tu-usuario/mini-players"
