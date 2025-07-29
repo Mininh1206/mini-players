@@ -164,7 +164,6 @@ import Layout from "../../../layouts/Layout.astro";
 			if (!nextCtx) return;
 			nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
 
-			if (!next) return;
 			const {shape, type} = next;
 			const matrix = shape[0];
 			// Centrar la pieza en el canvas de next
