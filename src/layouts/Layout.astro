@@ -25,7 +25,7 @@ const { title } = Astro.props;
         src="https://cdn.ampproject.org/v0/amp-auto-ads-0.1.js">
 </script>
   </head>
-  <body class="h-screen w-full">
+  <body class="min-h-screen w-full flex flex-col relative">
     <amp-auto-ads type="adsense"
         data-ad-client="ca-pub-3615553983953486">
 </amp-auto-ads>
@@ -52,7 +52,7 @@ const { title } = Astro.props;
         </div>
       </nav>
     </header>
-    <section class="grid grid-cols-[1fr_4fr_1fr] w-full h-full p-20">
+    <section class="grid grid-cols-[1fr_4fr_1fr] w-full flex-grow p-20 pt-28">
       <aside>
         <script
           async
@@ -95,7 +95,7 @@ const { title } = Astro.props;
       </aside>
     </section>
     <footer
-      class="absolute bottom-0 w-full justify-center mt-14 p-6 h-20 bg-gray-900 text-white"
+      class="w-full justify-center items-center p-6 h-18 bg-gray-900 text-white mt-auto"
     >
       <div class="flex items-center gap-2 justify-between">
         <span
