@@ -1,5 +1,5 @@
 ---
-import data from "../data/games.json";
+import data from "@/data/games.json";
 const search = new URLSearchParams(Astro.url.search).get('search')?.toLowerCase() || '';
 const filtered = search
 	? data.filter(game =>

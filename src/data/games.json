@@ -12,5 +12,19 @@
         "normalized-name": "minesweeper",
         "description": "El clásico juego de lógica. Despeja el campo de minas sin detonar ninguna.",
         "image": "/images/games/a1b2c3d4-e5f6-7890-1234-567890abcdef.webp"
+    },
+    {
+        "id": "03d7d308-f725-4f95-a795-8bb9df06a1c7",
+        "name": "Tres en Raya",
+        "normalized-name": "tictactoe",
+        "description": "El clásico juego de Tres en Raya. Juega contra un amigo en el mismo dispositivo.",
+        "image": "/images/games/03d7d308-f725-4f95-a795-8bb9df06a1c7.webp"
+    },
+    {
+        "id": "b2c3d4e5-f6a7-8901-2345-67890abcdef1",
+        "name": "Juego de Memoria",
+        "normalized-name": "memory",
+        "description": "Encuentra las parejas de cartas. Juega solo contrarreloj o reta a un amigo.",
+        "image": "/images/games/b2c3d4e5-f6a7-8901-2345-67890abcdef1.webp"
     }
 ]
