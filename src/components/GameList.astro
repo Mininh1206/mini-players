@@ -3,10 +3,12 @@ import data from "@/data/games.json";
 const search = new URLSearchParams(Astro.url.search).get('search')?.toLowerCase() || '';
 const filtered = search
 	? data.filter(game =>
-		game.name.toLowerCase().includes(search) ||
-		game.description.toLowerCase().includes(search)
+		(game.visible !== false) && (
+			game.name.toLowerCase().includes(search) ||
+			game.description.toLowerCase().includes(search)
+		)
 	)
-	: data;
+	: data.filter(game => game.visible !== false);
 ---
 <div class="flex flex-wrap gap-4 justify-center items-center">
 {
@@ -15,7 +17,7 @@ const filtered = search
       <a class="w-full h-full flex relative rounded-lg overflow-hidden hover:scale-125 group transition" href=`/games/${game["normalized-name"]}`>
         <img
           class="object-fill w-full h-full"
-          src={game.image}
+          src={`/images/games/${game["normalized-name"]}/placeholder.webp`}
           alt={game.name}
         />
         <div class="w-full h-full p-2 bg-black bg-opacity-50 absolute invisible group-hover:visible">

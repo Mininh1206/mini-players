@@ -1,0 +1,633 @@
+---
+import Layout from "@/layouts/Layout.astro";
+---
+
+<Layout title="Clon de Tetris">
+	<div
+		class="flex flex-row gap-8 items-start bg-gray-800 p-6 rounded-lg shadow-lg"
+	>
+		<!-- Zona de juego -->
+		<div
+			class="bg-black p-2 rounded-md border-4 border-gray-600 flex items-center justify-center"
+		>
+			<canvas id="canvas" width="300" height="600" class="block"></canvas>
+		</div>
+		<!-- Panel derecho: Score y Next -->
+		<div class="flex flex-col gap-8 min-w-[120px]">
+			<div
+				class="bg-gray-900 text-white rounded p-4 flex flex-col items-center"
+			>
+				<span class="text-xs">SCORE</span>
+				<span id="score" class="text-2xl font-mono">0</span>
+			</div>
+			<div
+				class="bg-gray-900 text-white rounded p-4 flex flex-col items-center"
+			>
+				<span class="text-xs">NEXT</span>
+				<canvas id="next" width="96" height="96" class="mt-2"></canvas>
+			</div>
+			<div
+				class="bg-gray-900 text-white rounded p-4 flex flex-col items-center"
+			>
+				<span class="text-xs">HOLD (C)</span>
+				<canvas id="hold" width="96" height="96" class="mt-2"></canvas>
+			</div>
+		</div>
+	</div>
+	<script>
+		const canvas: HTMLCanvasElement = document.getElementById(
+			"canvas",
+		) as HTMLCanvasElement;
+		const context = canvas.getContext("2d");
+		const nextCanvas: HTMLCanvasElement = document.getElementById(
+			"next",
+		) as HTMLCanvasElement;
+		const nextCtx = nextCanvas.getContext("2d");
+		const holdCanvas: HTMLCanvasElement = document.getElementById(
+			"hold",
+		) as HTMLCanvasElement;
+		const holdCtx = holdCanvas.getContext("2d");
+
+		const COLS = 10;
+		const ROWS = 20;
+		const BLOCK = 30;
+		canvas.width = COLS * BLOCK;
+		canvas.height = ROWS * BLOCK;
+		// Ajustar el tamaño del canvas de la siguiente pieza para que sea cuadrado y no escale el contexto
+		nextCanvas.width = 96;
+		nextCanvas.height = 96;
+		holdCanvas.width = 96;
+		holdCanvas.height = 96;
+
+		if (context) {
+			context.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+			// context.scale(BLOCK, BLOCK); // Eliminar escalado
+		}
+		if (nextCtx) {
+			nextCtx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
+			// No escalar, dibujar manualmente con tamaño fijo
+		}
+		if (holdCtx) {
+			holdCtx.setTransform(1, 0, 0, 1, 0, 0);
+		}
+
+		const SHAPES: Record<string, number[][][]> = {
+			I: [
+				[
+					[0, 0, 0, 0],
+					[1, 1, 1, 1],
+					[0, 0, 0, 0],
+					[0, 0, 0, 0],
+				],
+				[
+					[0, 1, 0, 0],
+					[0, 1, 0, 0],
+					[0, 1, 0, 0],
+					[0, 1, 0, 0],
+				],
+			],
+			J: [
+				[
+					[1, 0, 0],
+					[1, 1, 1],
+					[0, 0, 0],
+				],
+				[
+					[0, 1, 1],
+					[0, 1, 0],
+					[0, 1, 0],
+				],
+				[
+					[0, 0, 0],
+					[1, 1, 1],
+					[0, 0, 1],
+				],
+				[
+					[0, 1, 0],
+					[0, 1, 0],
+					[1, 1, 0],
+				],
+			],
+			L: [
+				[
+					[0, 0, 1],
+					[1, 1, 1],
+					[0, 0, 0],
+				],
+				[
+					[0, 1, 0],
+					[0, 1, 0],
+					[0, 1, 1],
+				],
+				[
+					[0, 0, 0],
+					[1, 1, 1],
+					[1, 0, 0],
+				],
+				[
+					[1, 1, 0],
+					[0, 1, 0],
+					[0, 1, 0],
+				],
+			],
+			O: [
+				[
+					[1, 1],
+					[1, 1],
+				],
+			],
+			S: [
+				[
+					[0, 1, 1],
+					[1, 1, 0],
+					[0, 0, 0],
+				],
+				[
+					[0, 1, 0],
+					[0, 1, 1],
+					[0, 0, 1],
+				],
+			],
+			T: [
+				[
+					[0, 1, 0],
+					[1, 1, 1],
+					[0, 0, 0],
+				],
+				[
+					[0, 1, 0],
+					[0, 1, 1],
+					[0, 1, 0],
+				],
+				[
+					[0, 0, 0],
+					[1, 1, 1],
+					[0, 1, 0],
+				],
+				[
+					[0, 1, 0],
+					[1, 1, 0],
+					[0, 1, 0],
+				],
+			],
+			Z: [
+				[
+					[1, 1, 0],
+					[0, 1, 1],
+					[0, 0, 0],
+				],
+				[
+					[0, 0, 1],
+					[0, 1, 1],
+					[0, 1, 0],
+				],
+			],
+		};
+		const COLORS: Record<string, string> = {
+			I: "#00f0f0",
+			J: "#0000f0",
+			L: "#f0a000",
+			O: "#f0f000",
+			S: "#00f000",
+			T: "#a000f0",
+			Z: "#f00000",
+		};
+
+		function randomPiece() {
+			const types = Object.keys(SHAPES);
+			const type = types[Math.floor(Math.random() * types.length)];
+			return { type, shape: SHAPES[type], rotation: 0, x: 3, y: 0 };
+		}
+
+		let board: (string | 0)[][];
+		let current: Piece;
+		let next: Piece;
+		interface Piece {
+			type: string;
+			shape: number[][][];
+			rotation: number;
+			x: number;
+			y: number;
+		}
+		let held: Piece | null = null;
+		let canHold: boolean = true;
+		let score: number = 0;
+		let gameOver: boolean = false;
+		let started: boolean = false;
+
+		function resetGame() {
+			board = Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+			current = randomPiece();
+			next = randomPiece();
+			held = null;
+			canHold = true;
+			score = 0;
+			gameOver = false;
+			started = true;
+			drawBoard();
+			drawNext();
+			drawHold();
+			updateScore();
+			loop();
+		}
+
+		function drawStartScreen() {
+			if (!context) return;
+			context.clearRect(0, 0, canvas.width, canvas.height);
+			context.fillStyle = "#111";
+			context.fillRect(0, 0, canvas.width, canvas.height);
+			context.font = "bold 24px monospace";
+			context.fillStyle = "white";
+			context.textAlign = "center";
+			context.fillText(
+				"Pulsa ESPACIO",
+				canvas.width / 2,
+				canvas.height / 2 - 20,
+			);
+			context.fillText(
+				"para empezar",
+				canvas.width / 2,
+				canvas.height / 2 + 20,
+			);
+		}
+
+		function drawGameOverScreen() {
+			if (!context) return;
+			context.clearRect(0, 0, canvas.width, canvas.height);
+			context.fillStyle = "#111";
+			context.fillRect(0, 0, canvas.width, canvas.height);
+			context.font = "bold 28px monospace";
+			context.fillStyle = "red";
+			context.textAlign = "center";
+			context.fillText(
+				"GAME OVER",
+				canvas.width / 2,
+				canvas.height / 2 - 20,
+			);
+			context.font = "20px monospace";
+			context.fillStyle = "white";
+			context.fillText(
+				"Pulsa ESPACIO",
+				canvas.width / 2,
+				canvas.height / 2 + 20,
+			);
+			context.fillText(
+				"para reiniciar",
+				canvas.width / 2,
+				canvas.height / 2 + 45,
+			);
+		}
+
+		function drawCell(
+			ctx: CanvasRenderingContext2D,
+			x: number,
+			y: number,
+			color: string,
+			cellSize: number = 1,
+			isGhost: boolean = false,
+		) {
+			ctx.fillStyle = isGhost ? color + "40" : color; // Add transparency for ghost
+			ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+			ctx.strokeStyle = isGhost ? "#444" : "#222";
+			ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
+		}
+
+		function drawBoard() {
+			if (!context) return;
+
+			context.clearRect(0, 0, canvas.width, canvas.height);
+			for (let y = 0; y < ROWS; y++) {
+				for (let x = 0; x < COLS; x++) {
+					if (board[y][x])
+						drawCell(context, x, y, String(board[y][x]), BLOCK);
+				}
+			}
+
+			// Ghost Piece
+			if (current) {
+				let ghostY = current.y;
+				while (!collide({ ...current, y: ghostY + 1 }, 0, 0)) {
+					ghostY++;
+				}
+
+				const { shape, rotation, x: px, type } = current;
+				const matrix = shape[rotation % shape.length];
+				for (let y = 0; y < matrix.length; y++) {
+					for (let x = 0; x < matrix[y].length; x++) {
+						if (matrix[y][x])
+							drawCell(
+								context,
+								px + x,
+								ghostY + y,
+								COLORS[type],
+								BLOCK,
+								true,
+							);
+					}
+				}
+			}
+
+			// Dibuja la pieza actual
+			const { shape, rotation, x: px, y: py, type } = current;
+			const matrix = shape[rotation % shape.length];
+			for (let y = 0; y < matrix.length; y++) {
+				for (let x = 0; x < matrix[y].length; x++) {
+					if (matrix[y][x])
+						drawCell(context, px + x, py + y, COLORS[type], BLOCK);
+				}
+			}
+		}
+
+		function drawNext() {
+			if (!nextCtx) return;
+			nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+
+			const { shape, type } = next;
+			const matrix = shape[0];
+			// Centrar la pieza en el canvas de next
+			const cell = 22;
+			const offsetX = Math.floor((4 - matrix[0].length) / 2);
+			const offsetY = Math.floor((4 - matrix.length) / 2);
+			// Center in 96x96 canvas: 4 * 22 = 88. (96 - 88) / 2 = 4.
+			const globalOffsetX = 4;
+			const globalOffsetY = 4;
+
+			for (let y = 0; y < matrix.length; y++) {
+				for (let x = 0; x < matrix[y].length; x++) {
+					if (matrix[y][x]) {
+						nextCtx.fillStyle = COLORS[type];
+						nextCtx.fillRect(
+							globalOffsetX + (offsetX + x) * cell,
+							globalOffsetY + (offsetY + y) * cell,
+							cell,
+							cell,
+						);
+						nextCtx.strokeStyle = "#222";
+						nextCtx.strokeRect(
+							globalOffsetX + (offsetX + x) * cell,
+							globalOffsetY + (offsetY + y) * cell,
+							cell,
+							cell,
+						);
+					}
+				}
+			}
+		}
+
+		function drawHold() {
+			if (!holdCtx) return;
+			holdCtx.clearRect(0, 0, holdCanvas.width, holdCanvas.height);
+
+			if (!held) return;
+
+			/*
+			const { shape, type } = held as Piece;
+			// Always show default rotation for held piece
+			const matrix = SHAPES[type][0];
+			const cell = 22;
+			const offsetX = Math.floor((4 - matrix[0].length) / 2);
+			const offsetY = Math.floor((4 - matrix.length) / 2);
+			// Center in 96x96 canvas: 4 * 22 = 88. (96 - 88) / 2 = 4.
+			const globalOffsetX = 4;
+			const globalOffsetY = 4;
+
+			for (let y = 0; y < matrix.length; y++) {
+				for (let x = 0; x < matrix[y].length; x++) {
+					if (matrix[y][x]) {
+						holdCtx.fillStyle = COLORS[type]; // Always show color
+						holdCtx.fillRect(
+							globalOffsetX + (offsetX + x) * cell,
+							globalOffsetY + (offsetY + y) * cell,
+							cell,
+							cell,
+						);
+						holdCtx.strokeStyle = "#222";
+						holdCtx.strokeRect(
+							globalOffsetX + (offsetX + x) * cell,
+							globalOffsetY + (offsetY + y) * cell,
+							cell,
+							cell,
+						);
+					}
+				}
+			}
+			*/
+		}
+
+		function updateScore() {
+			const scoreElement = document.getElementById("score");
+			if (scoreElement) {
+				scoreElement.textContent = score.toString();
+			}
+		}
+
+		function collide(
+			piece: {
+				shape: number[][][];
+				rotation: number;
+				x: number;
+				y: number;
+				type: string;
+			},
+			nx = 0,
+			ny = 0,
+			nr = 0,
+		) {
+			const { shape, rotation, x, y } = piece;
+			const matrix = shape[(rotation + nr) % shape.length];
+			for (let j = 0; j < matrix.length; j++) {
+				for (let i = 0; i < matrix[j].length; i++) {
+					if (matrix[j][i]) {
+						let newX = x + i + nx;
+						let newY = y + j + ny;
+						if (
+							newX < 0 ||
+							newX >= COLS ||
+							newY >= ROWS ||
+							(newY >= 0 && board[newY][newX])
+						) {
+							return true;
+						}
+					}
+				}
+			}
+			return false;
+		}
+
+		function merge() {
+			const { shape, rotation, x, y, type } = current;
+			const matrix = shape[rotation % shape.length];
+			for (let j = 0; j < matrix.length; j++) {
+				for (let i = 0; i < matrix[j].length; i++) {
+					if (matrix[j][i]) {
+						if (y + j < 0) {
+							gameOver = true;
+							return;
+						}
+						board[y + j][x + i] = COLORS[type];
+					}
+				}
+			}
+		}
+
+		function clearLines() {
+			let lines = 0;
+			for (let y = ROWS - 1; y >= 0; y--) {
+				if (board[y].every((cell) => cell)) {
+					board.splice(y, 1);
+					board.unshift(Array(COLS).fill(0));
+					lines++;
+					y++;
+				}
+			}
+			if (lines) score += [0, 40, 100, 300, 1200][lines];
+		}
+
+		function drop() {
+			if (!started || gameOver) return;
+			if (!collide(current, 0, 1)) {
+				current.y++;
+			} else {
+				merge();
+				clearLines();
+				current = next;
+				next = randomPiece();
+				canHold = true; // Reset hold capability
+				drawHold();
+				if (collide(current, 0, 0)) {
+					gameOver = true;
+				}
+			}
+		}
+
+		function hardDrop() {
+			while (!collide(current, 0, 1)) {
+				current.y++;
+			}
+			drop();
+		}
+
+		function move(dir: number) {
+			if (!collide(current, dir, 0)) {
+				current.x += dir;
+			}
+		}
+
+		function rotate() {
+			if (!collide(current, 0, 0, 1)) {
+				current.rotation =
+					(current.rotation + 1) % current.shape.length;
+			}
+		}
+
+		function hold() {
+			if (!canHold || gameOver || !started) return;
+
+			if (!held) {
+				held = {
+					type: current.type,
+					shape: SHAPES[current.type],
+					rotation: 0,
+					x: 3,
+					y: 0,
+				};
+				current = next;
+				next = randomPiece();
+			} else {
+				const temp = {
+					type: current.type,
+					shape: SHAPES[current.type],
+					rotation: 0,
+					x: 3,
+					y: 0,
+				};
+				current = {
+					type: held.type,
+					shape: SHAPES[held.type],
+					rotation: 0,
+					x: 3,
+					y: 0,
+				};
+				held = temp;
+			}
+
+			canHold = false;
+			drawHold();
+			drawNext();
+			drawBoard();
+		}
+
+		document.addEventListener("keydown", (e) => {
+			if (e.key === " " && !started) {
+				resetGame();
+				return;
+			}
+			if (e.key === " " && gameOver) {
+				resetGame();
+				return;
+			}
+			if (!started || gameOver) return;
+			switch (e.key) {
+				case "ArrowLeft":
+					move(-1);
+					break;
+				case "ArrowRight":
+					move(1);
+					break;
+				case "ArrowDown":
+					drop();
+					break;
+				case "ArrowUp":
+					rotate();
+					break;
+				case " ":
+					hardDrop();
+					break;
+				case "c":
+				case "C":
+					hold();
+					break;
+			}
+			drawBoard();
+			drawNext();
+			updateScore();
+		});
+
+		// Bloquear controles cuando el canvas tiene el foco
+		canvas.addEventListener("keydown", function (e) {
+			if (
+				[
+					"ArrowLeft",
+					"ArrowRight",
+					"ArrowDown",
+					"ArrowUp",
+					" ",
+					"c",
+					"C",
+				].includes(e.key)
+			) {
+				e.preventDefault();
+			}
+		});
+		canvas.setAttribute("tabindex", "0");
+
+		function loop() {
+			if (!started) return;
+			if (!gameOver) {
+				setTimeout(() => {
+					drop();
+					drawBoard();
+					drawNext();
+					updateScore();
+					loop();
+				}, 500);
+			} else {
+				drawGameOverScreen();
+			}
+		}
+		drawStartScreen();
+		drawNext();
+		drawHold();
+		updateScore();
+	</script>
+</Layout>
