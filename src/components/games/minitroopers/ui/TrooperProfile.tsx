@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Trooper, Skill } from '@/logic/minitroopers/types';
 import { SKILLS } from '@/logic/minitroopers/skills';
+import SkillTooltip from './SkillTooltip';
 
 
 interface TrooperProfileProps {
@@ -103,11 +104,7 @@ const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrad
                                 >
                                     <div className="text-2xl text-center mb-1">{skill.icon}</div>
                                     {/* Custom Tooltip on Hover */}
-                                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-48 bg-black/90 text-white text-xs p-2 rounded border border-yellow-500 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                                        <div className={`font-bold mb-1 ${hasSkill ? 'text-yellow-500' : 'text-gray-500'}`}>{skill.name} {hasSkill ? '' : '(Locked)'}</div>
-                                        <div>{skill.description}</div>
-                                        {!hasSkill && skill.level && <div className="text-red-400 mt-1 text-[10px]">Unlocks at Level {skill.level}</div>}
-                                    </div>
+                                    <SkillTooltip skill={skill} t={t} isLocked={!hasSkill} />
                                 </div>
                             );
                         })}

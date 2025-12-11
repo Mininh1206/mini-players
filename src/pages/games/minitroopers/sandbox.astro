@@ -1,0 +1,8 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import { Sandbox as SandboxGame } from "@/components/games/minitroopers/ui/Sandbox";
+---
+
+<Layout title="Mini Troopers Sandbox - MiniPlayers" fullWidth={true}>
+    <SandboxGame client:only="react" />
+</Layout>

@@ -11,6 +11,10 @@ export interface TrooperAttributes {
     armor: number; // Damage reduction
     critChance: number; // Percentage 0-100
     speed: number; // New stat
+    aggro?: number; // Target priority
+    recoveryMod?: number; // Reduces weapon recovery
+    reloadBonus?: number; // Extra ammo per reload
+    deploymentLimitBonus?: number; // Increases deployment limit
 }
 
 export interface Skill {
@@ -31,10 +35,12 @@ export interface Trooper {
     isDead: boolean;
     level: number;
     // Combat State
-    position?: number; // 0-1000
+    position?: { x: number; y: number }; // 2D Coordinates (0-1000, 0-400)
     currentWeaponId?: string;
     ammo?: Record<string, number>; // WeaponID -> Current Ammo
-    cooldown?: number; // Turns to wait
+    actionTimer?: number; // Accumulates until threshold (1000)
+    recoveryTime?: number; // Ticks to wait before acting again
+    cooldown?: number; // Deprecated, kept for compatibility during refactor
     disarmed?: string[]; // IDs of disabled weapons
     tactics?: {
         priority: 'closest' | 'weakest' | 'strongest' | 'random';
@@ -44,7 +50,8 @@ export interface Trooper {
 }
 
 export interface BattleLogEntry {
-    turn: number;
+    time: number; // Replaces turn
+    turn?: number; // Deprecated
     actorId: string;
     actorName: string;
     targetId?: string;
@@ -52,7 +59,7 @@ export interface BattleLogEntry {
     action: 'attack' | 'heal' | 'wait' | 'move' | 'deploy' | 'switch_weapon' | 'reload' | 'use_equipment';
     damage?: number;
     heal?: number;
-    targetPosition?: number;
+    targetPosition?: { x: number; y: number };
     isCrit?: boolean;
     isMiss?: boolean;
     isDodge?: boolean;

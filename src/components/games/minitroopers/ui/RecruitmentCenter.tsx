@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Trooper } from '@/logic/minitroopers/types';
 import TrooperCard from './TrooperCard';
+import SkillTooltip from './SkillTooltip';
 
 interface RecruitmentCenterProps {
     candidates: Trooper[];
@@ -25,23 +26,19 @@ const RecruitmentCenter: React.FC<RecruitmentCenterProps> = ({ candidates, onRec
                             {/* Weapon */}
                             <div className="relative group bg-gray-800 p-2 rounded border border-gray-600 hover:border-red-500 transition-colors cursor-help">
                                 <div className="text-2xl text-center mb-1">{trooper.skills[0]?.icon}</div>
-                                <div className="text-xs text-center text-gray-400 truncate">{trooper.skills[0]?.name}</div>
-                                {/* Tooltip */}
-                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-48 bg-black/90 text-white text-xs p-2 rounded border border-red-500 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                                    <div className="font-bold text-red-500 mb-1">{trooper.skills[0]?.name}</div>
-                                    <div>{trooper.skills[0]?.description}</div>
+                                <div className="text-xs text-center text-gray-400 truncate">
+                                    {t(`skill_${trooper.skills[0]?.id}_name`) !== `skill_${trooper.skills[0]?.id}_name` ? t(`skill_${trooper.skills[0]?.id}_name`) : trooper.skills[0]?.name}
                                 </div>
+                                {trooper.skills[0] && <SkillTooltip skill={trooper.skills[0]} t={t} />}
                             </div>
 
                             {/* Skill */}
                             <div className="relative group bg-gray-800 p-2 rounded border border-gray-600 hover:border-yellow-500 transition-colors cursor-help">
                                 <div className="text-2xl text-center mb-1">{trooper.skills[1]?.icon}</div>
-                                <div className="text-xs text-center text-gray-400 truncate">{trooper.skills[1]?.name}</div>
-                                {/* Tooltip */}
-                                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-48 bg-black/90 text-white text-xs p-2 rounded border border-yellow-500 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
-                                    <div className="font-bold text-yellow-500 mb-1">{trooper.skills[1]?.name}</div>
-                                    <div>{trooper.skills[1]?.description}</div>
+                                <div className="text-xs text-center text-gray-400 truncate">
+                                    {t(`skill_${trooper.skills[1]?.id}_name`) !== `skill_${trooper.skills[1]?.id}_name` ? t(`skill_${trooper.skills[1]?.id}_name`) : trooper.skills[1]?.name}
                                 </div>
+                                {trooper.skills[1] && <SkillTooltip skill={trooper.skills[1]} t={t} />}
                             </div>
                         </div>
 

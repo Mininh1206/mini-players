@@ -1,4 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
+import { Sandbox } from './Sandbox';
 import TrooperCard from './TrooperCard';
 import TrooperProfile from './TrooperProfile';
 import BattleArena from './BattleArena';
@@ -6,7 +8,7 @@ import RecruitmentCenter from './RecruitmentCenter';
 import type { Trooper, BattleResult, Player, BattleHistoryEntry } from '@/logic/minitroopers/types';
 import { useTranslation } from '@/logic/minitroopers/i18n';
 import { simulateBattle } from '@/logic/minitroopers/combat';
-import MiniTroopersGame from '../MiniTroopersGame';
+import MiniTroopersGame from '@/components/games/minitroopers/MiniTroopersGame';
 import { saveGame, loadGame } from '@/logic/minitroopers/storage';
 import { generateRandomTrooper } from '@/logic/minitroopers/generators';
 import { getRandomSkill, getSkillsByLevel } from '@/logic/minitroopers/skills';
@@ -29,6 +31,23 @@ const MOCK_OPPONENTS: Record<string, Trooper[]> = {
     ],
     'Mission: Raid': [
         { id: 'b1', name: 'Boss', class: 'Soldier', team: 'B', isDead: false, skills: [], level: 1, attributes: { hp: 200, maxHp: 200, initiative: 15, range: 2, damage: 20, aim: 95, dodge: 10, armor: 5, critChance: 10, speed: 120 }, ammo: {}, cooldown: 0, disarmed: [] }
+    ],
+    // Standard Opponents
+    'Army of Darkness': [
+        generateRandomTrooper(3),
+        generateRandomTrooper(3),
+        generateRandomTrooper(3)
+    ],
+    'The Peacekeepers': [
+        generateRandomTrooper(4),
+        generateRandomTrooper(4),
+        generateRandomTrooper(4),
+        generateRandomTrooper(4)
+    ],
+    'Random Noobs': [
+        generateRandomTrooper(2),
+        generateRandomTrooper(2),
+        generateRandomTrooper(2)
     ],
     // Advanced Opponents
     'The Elite Guard': [
@@ -135,12 +154,12 @@ const MiniTroopersLayout: React.FC = () => {
             return;
         }
         
-        // Store for visualization
-        setCurrentOpponent(opponentSquad);
-
         // Deep copy to avoid mutating initial state across battles
         const mySquad = player.troopers.map(t => ({ ...t, isDead: false, attributes: { ...t.attributes, hp: t.attributes.maxHp } }));
-        const enemySquad = opponentSquad.map(t => ({ ...t, isDead: false, attributes: { ...t.attributes, hp: t.attributes.maxHp } }));
+        const enemySquad = opponentSquad.map(t => ({ ...t, team: 'B' as const, isDead: false, attributes: { ...t.attributes, hp: t.attributes.maxHp } }));
+
+        // Store for visualization (Use enemySquad which has correct Team B assignment)
+        setCurrentOpponent(enemySquad);
 
         const result = simulateBattle(mySquad, enemySquad);
         setBattleResult(result);
@@ -417,16 +436,16 @@ const MiniTroopersLayout: React.FC = () => {
                     {currentView === 'SIMULATION' && battleResult && (
                         <div className="flex flex-col gap-4 h-full">
                             <div className="flex justify-between items-center bg-gray-800 p-4 rounded-lg border border-gray-700">
-                                <h2 className="text-2xl font-bold text-white">Battle Simulation</h2>
+                                <h2 className="text-2xl font-bold text-white">{t('battle_simulation') || 'Battle Simulation'}</h2>
                                 <div className="flex gap-4 items-center">
                                     <div className={`px-4 py-1 rounded font-bold ${battleResult.winner === 'A' ? 'bg-green-900 text-green-100' : 'bg-red-900 text-red-100'}`}>
-                                        {battleResult.winner === 'A' ? 'VICTORY' : 'DEFEAT'}
+                                        {battleResult.winner === 'A' ? (t('victory') || 'VICTORY') : (t('defeat') || 'DEFEAT')}
                                     </div>
                                     <button 
                                         onClick={() => setCurrentView('BATTLE')}
                                         className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white font-bold transition"
                                     >
-                                        Back to Arena
+                                        {t('back_to_arena') || 'Back to Arena'}
                                     </button>
                                 </div>
                             </div>
@@ -443,7 +462,7 @@ const MiniTroopersLayout: React.FC = () => {
                             <div className="h-32 bg-gray-950 rounded-lg p-4 overflow-y-auto font-mono text-xs text-gray-400 border border-gray-800">
                                 {battleResult.log.map((entry, idx) => (
                                     <div key={idx} className="mb-1 border-b border-gray-900 pb-1 last:border-0">
-                                        <span className="text-yellow-600 mr-2">[{entry.turn}]</span>
+                                        <span className="text-yellow-600 mr-2">[{entry.time}]</span>
                                         <span>{entry.message}</span>
                                     </div>
                                 ))}
@@ -475,7 +494,7 @@ const MiniTroopersLayout: React.FC = () => {
                                 </div>
                             ) : (
                                 <div className="text-center py-12 border-2 border-dashed border-gray-800 rounded-xl">
-                                    <span className="text-gray-500 text-lg">No battles recorded yet.</span>
+                                    <span className="text-gray-500 text-lg">{t('no_battles_yet') || 'No battles recorded yet.'}</span>
                                 </div>
                             )}
                         </div>

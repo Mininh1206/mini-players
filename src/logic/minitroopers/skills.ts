@@ -9,6 +9,8 @@ export const SKILLS: Skill[] = [
     new Specialization('saboteur', 'Saboteur', 'Specializes in sabotage and disrupting enemy weapons.', '🧨', 0, 0),
     new Specialization('scout', 'Scout', 'High mobility and reconnaissance capabilities.', '🔭', 0, 20),
     new Specialization('soldier', 'Soldier', 'Balanced combatant with extra health.', '🪖', 20, 0),
+    new Specialization('sniper', 'Sniper', 'Deadly precision at long range.', '🎯', 0, 0),
+    new Specialization('commando', 'Commando', 'Versatile warrior for any situation.', '⚔️', 10, 0),
     new Specialization('spy', 'Spy', 'Infiltrates enemy lines. High initiative.', '🕵️', 0, 50),
 
     // Vehicles (Level 7+)

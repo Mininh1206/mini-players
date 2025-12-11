@@ -7,6 +7,8 @@ export class BattleScene extends Phaser.Scene {
     private currentTurnIndex: number = 0;
     private battleText: Phaser.GameObjects.Text | null = null;
     private isPlayingTurn: boolean = false;
+    private isPaused: boolean = false;
+    public onTrooperClick?: (trooperId: string) => void;
 
     // All troopers available (for looking up data when spawning)
     private allTroopersMap: Map<string, Trooper> = new Map();
@@ -54,7 +56,8 @@ export class BattleScene extends Phaser.Scene {
     }
 
     processNextTurn() {
-        if (this.isPlayingTurn) return; // Wait for current animation to finish
+        if (this.isPaused) return;
+        if (this.isPlayingTurn) return; // Wait for current batch to finish
         
         if (this.currentTurnIndex >= this.battleResult.log.length) {
             this.battleText?.setText(`Winner: Team ${this.battleResult.winner === 'A' ? 'PLAYER' : 'ENEMY'}`);
@@ -62,61 +65,118 @@ export class BattleScene extends Phaser.Scene {
             return;
         }
 
-        const log = this.battleResult.log[this.currentTurnIndex];
-        this.currentTurnIndex++;
-        this.playTurnAnimation(log);
-    }
+        // Collect all logs with the same time
+        const currentLog = this.battleResult.log[this.currentTurnIndex];
+        const currentTime = currentLog.time;
+        const batch: BattleLogEntry[] = [];
 
-    playTurnAnimation(log: BattleLogEntry) {
-        this.isPlayingTurn = true;
-        this.battleText?.setText(log.message);
-
-        if (log.action === 'deploy') {
-            this.handleDeploy(log);
-            return;
+        while (this.currentTurnIndex < this.battleResult.log.length) {
+            const nextLog = this.battleResult.log[this.currentTurnIndex];
+            if (nextLog.time === currentTime) {
+                batch.push(nextLog);
+                this.currentTurnIndex++;
+            } else {
+                break;
+            }
         }
 
-        const actor = this.troopers.get(log.actorId);
-        if (!actor) {
-            console.warn(`Actor ${log.actorId} not found for action ${log.action}`);
+        this.playBatchAnimations(batch);
+    }
+
+    playBatchAnimations(batch: BattleLogEntry[]) {
+        this.isPlayingTurn = true;
+        let activeAnimations = 0;
+
+        const onAnimationComplete = () => {
+            activeAnimations--;
+            if (activeAnimations <= 0) {
+                this.isPlayingTurn = false;
+            }
+        };
+
+        // If batch is empty (shouldn't happen), reset
+        if (batch.length === 0) {
             this.isPlayingTurn = false;
             return;
         }
 
+        // Update text for the batch
+        this.battleText?.setText(`Time: ${batch[0].time}`);
+        
+        // Combine messages for the top display
+        const combinedMessage = batch.map(l => l.message).join(' | ');
+        // Truncate if too long
+        const displayMessage = combinedMessage.length > 50 ? combinedMessage.substring(0, 47) + '...' : combinedMessage;
+        
+        // We can't easily show the message on the main text if we want the timer there.
+        // Maybe create a separate text object for the timer?
+        // Or format: "Time: 100 - Rat moves..."
+        this.battleText?.setText(`[${batch[0].time}] ${displayMessage}`);
+
+        batch.forEach(log => {
+            activeAnimations++;
+            this.playTurnAnimation(log, onAnimationComplete);
+        });
+    }
+
+    playTurnAnimation(log: BattleLogEntry, onComplete: () => void) {
+        // Individual messages are handled by floating text or the batch text above.
+
+        if (log.action === 'deploy') {
+            this.handleDeploy(log, onComplete);
+            return;
+        }
+
+        const actor = this.troopers.get(log.actorId);
+        // Check if actor sprite is valid (not destroyed)
+        if (!actor || !actor.scene) { 
+            // Actor might be dead/destroyed.
+            // If it's a "wait" or "move" from a dead actor (shouldn't happen logic-wise but maybe visual lag), skip.
+            console.warn(`Actor ${log.actorId} not found or destroyed for action ${log.action}`);
+            onComplete();
+            return;
+        }
+
         if (log.action === 'wait') {
-            // Reloading or waiting
-            this.showFloatingText(actor.x, actor.y - 50, "RELOADING...", '#00ffff');
-            this.time.delayedCall(1000, () => {
-                this.isPlayingTurn = false;
-            });
+            this.showFloatingText(actor.x, actor.y - 50, "...", '#00ffff');
+            this.time.delayedCall(500, onComplete);
             return;
         }
 
         if (log.action === 'move') {
-            this.showFloatingText(actor.x, actor.y - 50, "MOVING", '#aaaaaa');
+            // this.showFloatingText(actor.x, actor.y - 50, "MOVING", '#aaaaaa');
             
             if (log.targetPosition !== undefined) {
-                const targetX = 50 + (log.targetPosition / 1000) * 700;
+                // Map Logic Coordinates to Screen Coordinates
+                // Logic X: 0-1000 -> Screen X: 50-750 (approx)
+                // Logic Y: 0-400 -> Screen Y: 100-500
+                const targetPos = log.targetPosition as any as { x: number, y: number }; // Cast because types might be mixed during refactor
                 
+                const targetX = 50 + (targetPos.x / 1000) * 700;
+                const targetY = 100 + targetPos.y; // Direct mapping with offset
+
                 this.tweens.add({
                     targets: actor,
                     x: targetX,
+                    y: targetY,
                     duration: 800,
                     ease: 'Power2',
                     onComplete: () => {
-                        this.isPlayingTurn = false;
-                        actor.setData('originX', targetX);
+                        if (actor.scene) {
+                            actor.setData('originX', targetX);
+                            actor.setData('originY', targetY);
+                        }
+                        onComplete();
                     }
                 });
             } else {
+                // Fallback wiggle
                 this.tweens.add({
                     targets: actor,
                     x: actor.x + (actor.getData('team') === 'A' ? 20 : -20),
                     duration: 500,
                     yoyo: true,
-                    onComplete: () => {
-                        this.isPlayingTurn = false;
-                    }
+                    onComplete: onComplete
                 });
             }
             return;
@@ -124,41 +184,57 @@ export class BattleScene extends Phaser.Scene {
 
         if (log.action === 'heal') {
             const target = log.targetId ? this.troopers.get(log.targetId) : null;
-            if (target) {
+            if (target && target.scene) {
                 this.showFloatingText(actor.x, actor.y - 50, "HEAL!", '#00ff00');
                 this.tweens.add({
                     targets: actor,
                     x: target.x,
+                    y: target.y,
                     duration: 300,
                     yoyo: true,
                     onComplete: () => {
-                        this.showFloatingText(target.x, target.y - 50, `+${log.heal}`, '#00ff00');
-                        this.updateHealth(target, -(log.heal || 0)); // Negative damage = heal
-                        this.isPlayingTurn = false;
+                        if (target.scene) {
+                            this.showFloatingText(target.x, target.y - 50, `+${log.heal}`, '#00ff00');
+                            this.updateHealth(target, -(log.heal || 0));
+                        }
+                        // Return to origin?
+                        this.tweens.add({
+                            targets: actor,
+                            x: actor.getData('originX') || actor.x,
+                            y: actor.getData('originY') || actor.y,
+                            duration: 300,
+                            onComplete: onComplete
+                        });
                     }
                 });
             } else {
-                this.isPlayingTurn = false;
+                onComplete();
             }
             return;
         }
 
         if (log.action === 'use_equipment') {
             this.showFloatingText(actor.x, actor.y - 50, "GRENADE!", '#ff8800');
-            // Animate throw?
-            const targetX = log.targetPosition ? 50 + (log.targetPosition / 1000) * 700 : actor.x;
+            
+            let targetX = actor.x;
+            let targetY = actor.y;
+
+            if (log.targetPosition) {
+                const targetPos = log.targetPosition as any as { x: number, y: number };
+                targetX = 50 + (targetPos.x / 1000) * 700;
+                targetY = 100 + targetPos.y;
+            }
             
             const grenade = this.add.circle(actor.x, actor.y, 5, 0x000000);
             this.tweens.add({
                 targets: grenade,
                 x: targetX,
-                y: targetX, // Should be ground level?
+                y: targetY, 
                 duration: 500,
                 ease: 'Quad.easeOut',
                 onComplete: () => {
                     grenade.destroy();
-                    // Explosion effect
-                    const explosion = this.add.circle(targetX, 300, 50, 0xffaa00, 0.5);
+                    const explosion = this.add.circle(targetX, targetY, 50, 0xffaa00, 0.5);
                     this.tweens.add({
                         targets: explosion,
                         scale: 2,
@@ -166,7 +242,7 @@ export class BattleScene extends Phaser.Scene {
                         duration: 300,
                         onComplete: () => {
                             explosion.destroy();
-                            this.isPlayingTurn = false;
+                            onComplete();
                         }
                     });
                 }
@@ -178,12 +254,14 @@ export class BattleScene extends Phaser.Scene {
 
         // Attack Animation
         const forwardX = actor.x + (actor.getData('originX') < 400 ? 30 : -30);
+        const forwardY = actor.y; // No vertical lunge for now?
         
         this.tweens.chain({
             targets: actor,
             tweens: [
                 {
                     x: forwardX,
+                    y: forwardY,
                     duration: 200,
                     ease: 'Power1'
                 },
@@ -193,67 +271,50 @@ export class BattleScene extends Phaser.Scene {
                         // Determine hit/miss
                         if (log.isMiss || log.isDodge) {
                             this.showFloatingText(target?.x || actor.x, (target?.y || actor.y) - 50, log.isDodge ? "DODGE!" : "MISS!", '#ffff00');
-                        } else if (target && log.damage !== undefined) {
+                        } else if (target && target.scene && log.damage !== undefined) {
                             // Hit!
                             this.showFloatingText(target.x, target.y - 50, `-${log.damage}`, '#ff0000');
                             if (log.isCrit) {
                                 this.showFloatingText(target.x, target.y - 70, "CRIT!", '#ff8800');
                             }
                             
-                            // Update HP
                             this.updateHealth(target, log.damage);
                         }
                     }
                 },
                 {
-                    x: actor.getData('originX'), // Should return to actual position?
-                    // If they moved, originX is stale.
-                    // But since we don't track real movement yet, this is fine.
+                    x: actor.getData('originX') || actor.x,
+                    y: actor.getData('originY') || actor.y,
                     duration: 200,
                     ease: 'Power1',
-                    onComplete: () => {
-                        this.isPlayingTurn = false;
-                    }
+                    onComplete: onComplete
                 }
             ]
         });
     }
 
-    handleDeploy(log: BattleLogEntry) {
+    handleDeploy(log: BattleLogEntry, onComplete: () => void) {
         const trooper = this.allTroopersMap.get(log.actorId);
         if (!trooper) {
-            this.isPlayingTurn = false;
+            onComplete();
             return;
         }
 
-        // Use position from trooper state if available (it was set in deploy)
-        // But `allTroopersMap` has the *initial* state passed to init.
-        // The `combat.ts` modifies the objects in place?
-        // `simulateBattle` deep copies `reserveA` etc.
-        // So the `trooper` in `allTroopersMap` (from `data.teamA`) might NOT have the `position` set by `deploy` inside `simulateBattle`.
-        // `simulateBattle` returns `survivorsA` etc, but `BattleScene` receives `teamA` (initial).
-        // Wait, `MiniTroopersLayout` passes:
-        // `const mySquad = player.troopers.map(...)`
-        // `const result = simulateBattle(mySquad, ...)`
-        // `MiniTroopersGame` receives `mySquad` (initial) and `result`.
-        // So `BattleScene` doesn't know the positions calculated inside `simulateBattle`.
-        // This is a problem for accurate positioning.
-        // I should probably include the `position` in the `deploy` log message data?
-        // Or just map 0-1000 to screen width randomly for now to match the logic roughly.
-        // `combat.ts`: `trooper.position = ... random ...`
-        // So I can just generate a random position here too, consistent with team.
-        
         const isLeft = trooper.team === 'A';
-        // Map 0-200 (A) -> 50-250 px
-        // Map 800-1000 (B) -> 550-750 px
         
-        const randomOffset = Math.floor(Math.random() * 200);
-        const x = isLeft ? 50 + randomOffset : 550 + randomOffset;
-        
-        // Y position: Random or slot based?
-        // Let's use random Y to avoid stacking.
-        const y = 100 + Math.floor(Math.random() * 400);
+        let x = 0;
+        let y = 0;
 
+        if (log.targetPosition !== undefined) {
+             const targetPos = log.targetPosition as any as { x: number, y: number };
+             x = 50 + (targetPos.x / 1000) * 700;
+             y = 100 + targetPos.y;
+        } else {
+            const randomOffset = Math.floor(Math.random() * 200);
+            x = isLeft ? 50 + randomOffset : 550 + randomOffset;
+            y = 100 + Math.floor(Math.random() * 400);
+        }
+        
         this.createTrooperSprite(trooper, x, y, isLeft ? 0x00ff00 : 0xff0000, isLeft);
 
         const container = this.troopers.get(trooper.id);
@@ -266,12 +327,10 @@ export class BattleScene extends Phaser.Scene {
                 y: y,
                 duration: 500,
                 ease: 'Bounce.easeOut',
-                onComplete: () => {
-                    this.isPlayingTurn = false;
-                }
+                onComplete: onComplete
             });
         } else {
-            this.isPlayingTurn = false;
+            onComplete();
         }
     }
 
@@ -307,6 +366,35 @@ export class BattleScene extends Phaser.Scene {
         container.setData('team', isLeft ? 'A' : 'B');
 
         this.troopers.set(trooper.id, container);
+
+        // Interaction
+        const hitArea = new Phaser.Geom.Circle(0, 0, 25);
+        container.setInteractive(hitArea, Phaser.Geom.Circle.Contains);
+        container.on('pointerdown', () => {
+            if (this.onTrooperClick) {
+                this.onTrooperClick(trooper.id);
+            }
+        });
+        
+        // Hover effect
+        container.on('pointerover', () => {
+             this.input.setDefaultCursor('pointer');
+             (container.list[0] as Phaser.GameObjects.Arc).setStrokeStyle(2, 0xffff00);
+        });
+        container.on('pointerout', () => {
+             this.input.setDefaultCursor('default');
+             (container.list[0] as Phaser.GameObjects.Arc).setStrokeStyle(0);
+        });
+    }
+
+    pause() {
+        this.isPaused = true;
+        this.tweens.pauseAll();
+    }
+
+    resume() {
+        this.isPaused = false;
+        this.tweens.resumeAll();
     }
 
     updateHealth(target: Phaser.GameObjects.Container, damage: number) {

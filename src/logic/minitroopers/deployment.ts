@@ -7,6 +7,9 @@ export const getDeploymentLimit = (squad: Trooper[]): number => {
         if (trooper.skills.some(s => s.id === 'scout')) {
             limit += 1;
         }
+        if (trooper.attributes.deploymentLimitBonus) {
+            limit += trooper.attributes.deploymentLimitBonus;
+        }
     }
     return Math.min(limit, 20); // Capped at 20 per wiki
 };
