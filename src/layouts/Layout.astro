@@ -3,21 +3,48 @@ import "@/styles/global.css";
 
 interface Props {
   title: string;
+  description?: string;
+  image?: string;
   fullWidth?: boolean;
 }
 
-const { title, fullWidth = false } = Astro.props;
+const { 
+  title, 
+  description = "Juega a los mejores minijuegos clásicos online: Tetris, Snake, Buscaminas y más. Diversión gratuita en tu navegador.", 
+  image = "/images/og-image.webp",
+  fullWidth = false 
+} = Astro.props;
+
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 ---
 
 <!doctype html>
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="description" content="Página web de minijuegos hechos con JS" />
     <meta name="viewport" content="width=device-width" />
     <link rel="icon" type="image/svg+xml" href="/favicon.webp" />
     <meta name="generator" content={Astro.generator} />
+    
+    <!-- SEO Principal -->
     <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonicalURL} />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={Astro.url} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={new URL(image, Astro.url)} />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content={Astro.url} />
+    <meta property="twitter:title" content={title} />
+    <meta property="twitter:description" content={description} />
+    <meta property="twitter:image" content={new URL(image, Astro.url)} />
+
     <script
       async
       src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3615553983953486"

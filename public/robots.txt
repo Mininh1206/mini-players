@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://mini-players.netlify.app/sitemap-index.xml
