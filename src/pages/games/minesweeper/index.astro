@@ -1,0 +1,546 @@
+---
+import Layout from "@/layouts/Layout.astro";
+---
+
+<Layout title="Clon de Buscaminas">
+    <div class="flex flex-col gap-4 items-center">
+        <!-- Difficulty Selection -->
+        <div id="difficulty-selector" class="flex gap-4 mb-4">
+            <button
+                class="difficulty-btn bg-green-600 hover:bg-green-500 text-white font-bold py-2 px-4 rounded"
+                data-difficulty="easy">Fácil</button
+            >
+            <button
+                class="difficulty-btn bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-2 px-4 rounded"
+                data-difficulty="medium">Medio</button
+            >
+            <button
+                class="difficulty-btn bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-4 rounded"
+                data-difficulty="hard">Difícil</button
+            >
+        </div>
+
+        <div
+            class="flex flex-row gap-8 items-start bg-gray-800 p-6 rounded-lg shadow-lg"
+        >
+            <!-- Zona de juego -->
+            <div
+                class="bg-gray-400 p-2 rounded-md border-4 border-gray-600 flex items-center justify-center"
+            >
+                <canvas
+                    id="canvas"
+                    width="300"
+                    height="300"
+                    class="block cursor-pointer"></canvas>
+            </div>
+            <!-- Panel derecho: Minas y Tiempo -->
+            <div class="flex flex-col gap-8 min-w-[120px]">
+                <div
+                    class="bg-gray-900 text-white rounded p-4 flex flex-col items-center"
+                >
+                    <span class="text-xs">MINAS</span>
+                    <span id="mines-count" class="text-2xl font-mono">010</span>
+                </div>
+                <div
+                    class="bg-gray-900 text-white rounded p-4 flex flex-col items-center"
+                >
+                    <span class="text-xs">TIEMPO</span>
+                    <span id="timer" class="text-2xl font-mono">000</span>
+                </div>
+                <button
+                    id="reset-btn"
+                    class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded"
+                >
+                    Reiniciar
+                </button>
+            </div>
+        </div>
+    </div>
+    <script>
+        const canvas = document.getElementById("canvas") as HTMLCanvasElement;
+        const ctx = canvas.getContext("2d");
+        const minesCountElem = document.getElementById("mines-count");
+        const timerElem = document.getElementById("timer");
+        const resetBtn = document.getElementById("reset-btn");
+        const difficultyBtns = document.querySelectorAll(".difficulty-btn");
+
+        const DIFFICULTIES = {
+            easy: { cols: 10, rows: 10, mines: 10 },
+            medium: { cols: 16, rows: 16, mines: 40 },
+            hard: { cols: 30, rows: 16, mines: 99 },
+        };
+
+        let COLS = 10;
+        let ROWS = 10;
+        const CELL_SIZE = 30; // Reduced slightly to fit larger grids better
+        let MINES_COUNT = 10;
+
+        // Colors
+        const COLOR_COVERED = "#c0c0c0";
+        const COLOR_REVEALED = "#e0e0e0"; // Lighter gray for revealed
+        const COLOR_BORDER_LIGHT = "#ffffff";
+        const COLOR_BORDER_DARK = "#808080";
+
+        // Game State
+        let grid: Cell[][] = [];
+        let gameOver = false;
+        let gameWon = false;
+        let firstClick = true;
+        let flags = 0;
+        let startTime = 0;
+        let timerInterval: number | undefined;
+        let hoveredCell = { x: -1, y: -1 };
+
+        interface Cell {
+            x: number;
+            y: number;
+            isMine: boolean;
+            isRevealed: boolean;
+            isFlagged: boolean;
+            neighborMines: number;
+        }
+
+        function setDifficulty(difficulty: "easy" | "medium" | "hard") {
+            const config = DIFFICULTIES[difficulty];
+            COLS = config.cols;
+            ROWS = config.rows;
+            MINES_COUNT = config.mines;
+
+            canvas.width = COLS * CELL_SIZE;
+            canvas.height = ROWS * CELL_SIZE;
+
+            initGame();
+        }
+
+        function initGame() {
+            grid = [];
+            gameOver = false;
+            gameWon = false;
+            firstClick = true;
+            flags = 0;
+            hoveredCell = { x: -1, y: -1 };
+
+            stopTimer();
+            if (timerElem) timerElem.textContent = "000";
+            updateMinesCount();
+
+            // Initialize empty grid
+            for (let y = 0; y < ROWS; y++) {
+                const row: Cell[] = [];
+                for (let x = 0; x < COLS; x++) {
+                    row.push({
+                        x,
+                        y,
+                        isMine: false,
+                        isRevealed: false,
+                        isFlagged: false,
+                        neighborMines: 0,
+                    });
+                }
+                grid.push(row);
+            }
+            draw();
+        }
+
+        function placeMines(excludeX: number, excludeY: number) {
+            let minesPlaced = 0;
+            while (minesPlaced < MINES_COUNT) {
+                const x = Math.floor(Math.random() * COLS);
+                const y = Math.floor(Math.random() * ROWS);
+
+                // Don't place mine on the first clicked cell or neighbors
+                if (Math.abs(x - excludeX) <= 1 && Math.abs(y - excludeY) <= 1)
+                    continue;
+                if (grid[y][x].isMine) continue;
+
+                grid[y][x].isMine = true;
+                minesPlaced++;
+            }
+
+            // Calculate numbers
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    if (!grid[y][x].isMine) {
+                        grid[y][x].neighborMines = countNeighborMines(x, y);
+                    }
+                }
+            }
+        }
+
+        function countNeighborMines(x: number, y: number): number {
+            let count = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
+                        if (grid[ny][nx].isMine) count++;
+                    }
+                }
+            }
+            return count;
+        }
+
+        function reveal(x: number, y: number) {
+            if (x < 0 || x >= COLS || y < 0 || y >= ROWS) return;
+            const cell = grid[y][x];
+
+            if (cell.isRevealed || cell.isFlagged) return;
+
+            cell.isRevealed = true;
+
+            if (cell.isMine) {
+                gameOver = true;
+                revealAllMines();
+                stopTimer();
+                return;
+            }
+
+            if (cell.neighborMines === 0) {
+                // Flood fill
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        if (dx === 0 && dy === 0) continue;
+                        reveal(x + dx, y + dy);
+                    }
+                }
+            }
+
+            checkWin();
+        }
+
+        function chordReveal(x: number, y: number) {
+            if (x < 0 || x >= COLS || y < 0 || y >= ROWS) return;
+            const cell = grid[y][x];
+
+            if (!cell.isRevealed || cell.neighborMines === 0) return;
+
+            // Count flags around
+            let flagCount = 0;
+            for (let dy = -1; dy <= 1; dy++) {
+                for (let dx = -1; dx <= 1; dx++) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
+                        if (grid[ny][nx].isFlagged) flagCount++;
+                    }
+                }
+            }
+
+            if (flagCount === cell.neighborMines) {
+                for (let dy = -1; dy <= 1; dy++) {
+                    for (let dx = -1; dx <= 1; dx++) {
+                        const nx = x + dx;
+                        const ny = y + dy;
+                        if (nx >= 0 && nx < COLS && ny >= 0 && ny < ROWS) {
+                            if (
+                                !grid[ny][nx].isFlagged &&
+                                !grid[ny][nx].isRevealed
+                            ) {
+                                reveal(nx, ny);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function toggleFlag(x: number, y: number) {
+            if (x < 0 || x >= COLS || y < 0 || y >= ROWS) return;
+            const cell = grid[y][x];
+            if (cell.isRevealed) return;
+
+            if (cell.isFlagged) {
+                cell.isFlagged = false;
+                flags--;
+            } else {
+                if (flags < MINES_COUNT) {
+                    cell.isFlagged = true;
+                    flags++;
+                }
+            }
+            updateMinesCount();
+        }
+
+        function checkWin() {
+            let revealedCount = 0;
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    if (grid[y][x].isRevealed) revealedCount++;
+                }
+            }
+            if (revealedCount === COLS * ROWS - MINES_COUNT) {
+                gameWon = true;
+                gameOver = true;
+                stopTimer();
+                flagAllMines();
+            }
+        }
+
+        function revealAllMines() {
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    if (grid[y][x].isMine) grid[y][x].isRevealed = true;
+                }
+            }
+        }
+
+        function flagAllMines() {
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    if (grid[y][x].isMine) grid[y][x].isFlagged = true;
+                }
+            }
+            flags = MINES_COUNT;
+            updateMinesCount();
+        }
+
+        function updateMinesCount() {
+            if (minesCountElem) {
+                minesCountElem.textContent = (MINES_COUNT - flags)
+                    .toString()
+                    .padStart(3, "0");
+            }
+        }
+
+        function startTimer() {
+            startTime = Date.now();
+            timerInterval = setInterval(() => {
+                const delta = Math.floor((Date.now() - startTime) / 1000);
+                if (timerElem)
+                    timerElem.textContent = Math.min(delta, 999)
+                        .toString()
+                        .padStart(3, "0");
+            }, 1000) as unknown as number;
+        }
+
+        function stopTimer() {
+            if (timerInterval) clearInterval(timerInterval);
+        }
+
+        // Drawing
+        function drawRect3D(
+            x: number,
+            y: number,
+            w: number,
+            h: number,
+            isPressed: boolean,
+        ) {
+            if (!ctx) return;
+            ctx.fillStyle = isPressed ? COLOR_REVEALED : COLOR_COVERED;
+            ctx.fillRect(x, y, w, h);
+
+            if (!isPressed) {
+                ctx.beginPath();
+                ctx.moveTo(x, y + h);
+                ctx.lineTo(x, y);
+                ctx.lineTo(x + w, y);
+                ctx.strokeStyle = COLOR_BORDER_LIGHT;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(x + w, y);
+                ctx.lineTo(x + w, y + h);
+                ctx.lineTo(x, y + h);
+                ctx.strokeStyle = COLOR_BORDER_DARK;
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            } else {
+                ctx.strokeStyle = "#999";
+                ctx.lineWidth = 1;
+                ctx.strokeRect(x, y, w, h);
+            }
+        }
+
+        function draw() {
+            if (!ctx) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            for (let y = 0; y < ROWS; y++) {
+                for (let x = 0; x < COLS; x++) {
+                    const cell = grid[y][x];
+                    const px = x * CELL_SIZE;
+                    const py = y * CELL_SIZE;
+
+                    // Background
+                    drawRect3D(px, py, CELL_SIZE, CELL_SIZE, cell.isRevealed);
+
+                    // Hover effect (only if not revealed and game active)
+                    if (
+                        !gameOver &&
+                        !cell.isRevealed &&
+                        x === hoveredCell.x &&
+                        y === hoveredCell.y
+                    ) {
+                        ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+                        ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+                    }
+
+                    // Content
+                    if (cell.isFlagged) {
+                        drawFlag(px, py);
+                    } else if (cell.isRevealed) {
+                        if (cell.isMine) {
+                            drawMine(px, py);
+                        } else if (cell.neighborMines > 0) {
+                            drawNumber(px, py, cell.neighborMines);
+                        }
+                    }
+                }
+            }
+
+            if (gameOver) {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.font = "bold 30px monospace";
+                ctx.fillStyle = gameWon ? "#4ade80" : "#ef4444"; // green-400 : red-500
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.strokeStyle = "black";
+                ctx.lineWidth = 3;
+
+                const text = gameWon ? "¡GANASTE!" : "GAME OVER";
+                ctx.strokeText(text, canvas.width / 2, canvas.height / 2);
+                ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+            }
+        }
+
+        function drawFlag(x: number, y: number) {
+            if (!ctx) return;
+            const cx = x + CELL_SIZE / 2;
+            const cy = y + CELL_SIZE / 2;
+
+            ctx.fillStyle = "#ef4444"; // Red
+            ctx.beginPath();
+            ctx.moveTo(cx - 5, cy - 10);
+            ctx.lineTo(cx + 10, cy - 2);
+            ctx.lineTo(cx - 5, cy + 6);
+            ctx.fill();
+
+            ctx.strokeStyle = "black";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx - 5, cy - 10);
+            ctx.lineTo(cx - 5, cy + 10);
+            ctx.stroke();
+        }
+
+        function drawMine(x: number, y: number) {
+            if (!ctx) return;
+            const cx = x + CELL_SIZE / 2;
+            const cy = y + CELL_SIZE / 2;
+            const r = CELL_SIZE / 4;
+
+            ctx.fillStyle = "black";
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Spikes
+            ctx.strokeStyle = "black";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cx - r - 2, cy);
+            ctx.lineTo(cx + r + 2, cy);
+            ctx.moveTo(cx, cy - r - 2);
+            ctx.lineTo(cx, cy + r + 2);
+            ctx.moveTo(cx - r + 2, cy - r + 2);
+            ctx.lineTo(cx + r - 2, cy + r - 2);
+            ctx.moveTo(cx + r - 2, cy - r + 2);
+            ctx.lineTo(cx - r + 2, cy + r - 2);
+            ctx.stroke();
+
+            // Shine
+            ctx.fillStyle = "white";
+            ctx.beginPath();
+            ctx.arc(cx - r / 2, cy - r / 2, 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawNumber(x: number, y: number, num: number) {
+            if (!ctx) return;
+            const colors = [
+                "",
+                "blue",
+                "green",
+                "red",
+                "darkblue",
+                "brown",
+                "cyan",
+                "black",
+                "gray",
+            ];
+            ctx.fillStyle = colors[num];
+            ctx.font = "bold 24px monospace";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(num.toString(), x + CELL_SIZE / 2, y + CELL_SIZE / 2);
+        }
+
+        // Input Handling
+        function getGridPos(e: MouseEvent) {
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / CELL_SIZE);
+            const y = Math.floor((e.clientY - rect.top) / CELL_SIZE);
+            return { x, y };
+        }
+
+        canvas.addEventListener("mousemove", (e) => {
+            if (gameOver) return;
+            const { x, y } = getGridPos(e);
+            if (x !== hoveredCell.x || y !== hoveredCell.y) {
+                hoveredCell = { x, y };
+                draw();
+            }
+        });
+
+        canvas.addEventListener("mouseleave", () => {
+            hoveredCell = { x: -1, y: -1 };
+            draw();
+        });
+
+        canvas.addEventListener("mousedown", (e) => {
+            if (gameOver) return;
+            const { x, y } = getGridPos(e);
+
+            if (e.button === 0) {
+                // Left click
+                if (grid[y][x].isRevealed) {
+                    chordReveal(x, y);
+                } else {
+                    if (firstClick) {
+                        placeMines(x, y);
+                        startTimer();
+                        firstClick = false;
+                    }
+                    reveal(x, y);
+                }
+            } else if (e.button === 2) {
+                // Right click
+                toggleFlag(x, y);
+            }
+            draw();
+        });
+
+        canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+        if (resetBtn) {
+            resetBtn.addEventListener("click", initGame);
+        }
+
+        difficultyBtns.forEach((btn) => {
+            btn.addEventListener("click", (e) => {
+                const target = e.target as HTMLElement;
+                const difficulty = target.dataset.difficulty as
+                    | "easy"
+                    | "medium"
+                    | "hard";
+                setDifficulty(difficulty);
+            });
+        });
+
+        setDifficulty("easy");
+    </script>
+</Layout>

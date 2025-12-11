@@ -1,0 +1,8 @@
+---
+import Layout from "@/layouts/Layout.astro";
+import MiniTroopersLayout from "@/components/games/minitroopers/ui/MiniTroopersLayout";
+---
+
+<Layout title="Mini Troopers - MiniPlayers" fullWidth={true}>
+    <MiniTroopersLayout client:only="react" />
+</Layout>
