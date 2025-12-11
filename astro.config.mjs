@@ -7,7 +7,7 @@ import sitemap from "@astrojs/sitemap";
 
 // https://astro.build/config
 export default defineConfig({
-  site: "https://mini-players.netlify.app",
+  site: "https://miniplayers.netlify.app",
   integrations: [vue(), react(), sitemap()],
   output: "server",
   adapter: netlify(),
