@@ -17,6 +17,7 @@ const MiniTroopersGame: React.FC<MiniTroopersGameProps> = ({ battleResult, mySqu
     const gameInstance = useRef<Phaser.Game | null>(null);
     const [inspectedTrooper, setInspectedTrooper] = React.useState<Trooper | null>(null);
     const { t } = useTranslation();
+    const [speedLabel, setSpeedLabel] = React.useState('1x');
 
     useEffect(() => {
         if (typeof window !== 'undefined' && gameContainer.current && !gameInstance.current) {
@@ -55,8 +56,14 @@ const MiniTroopersGame: React.FC<MiniTroopersGameProps> = ({ battleResult, mySqu
                 s.scene.restart({ result: battleResult, teamA: mySquad, teamB: opponentSquad });
                 // Setup callbacks
                 s.onTrooperClick = (trooperId: string) => {
-                    const trooper = [...(mySquad || []), ...(opponentSquad || [])].find(t => t.id === trooperId);
-                    if (trooper) {
+                    // Try to get live data from scene
+                    const liveData = s.getTrooperData(trooperId);
+                    
+                    const trooperDef = [...(mySquad || []), ...(opponentSquad || [])].find(t => t.id === trooperId);
+                    if (trooperDef) {
+                        // Merge live data if available
+                        const trooper = liveData ? { ...trooperDef, attributes: { ...trooperDef.attributes, hp: liveData.hp }, ammo: liveData.ammo, currentWeaponId: liveData.currentWeaponId } : trooperDef;
+                        
                         setInspectedTrooper(trooper);
                         s.pause();
                     }
@@ -93,6 +100,34 @@ const MiniTroopersGame: React.FC<MiniTroopersGameProps> = ({ battleResult, mySqu
                     t={t}
                 />
             )}
+            {inspectedTrooper && (
+                <BattleInspector 
+                    trooper={inspectedTrooper} 
+                    onClose={handleCloseInspector}
+                    t={t}
+                />
+            )}
+
+            {/* Speed Control Button */}
+            <button 
+                className="absolute top-4 right-4 bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded border border-gray-600 z-10"
+                onClick={() => {
+                     const scene = gameInstance.current?.scene.getScene('BattleScene') as BattleScene;
+                     if (scene) {
+                         const currentSpeed = (scene as any).speedMultiplier || 1;
+                         const newSpeed = currentSpeed === 1 ? 2 : 1;
+                         scene.setSpeed(newSpeed);
+                         // Force update to show button text change (though we could use local state if we want strict UI sync)
+                         // For now, assume it toggles. We'll add text update if needed, but a simple toggle is enough.
+                         // Actually, let's use a ref or state for button label if we want it perfect, but let's stick to simple "Toggle Speed" or "x1/x2" text.
+                         // But we can't easily read back from scene without state.
+                         // Let's use simple state here.
+                         setSpeedLabel(newSpeed === 1 ? '1x' : '2x');
+                     }
+                }}
+            >
+                {speedLabel}
+            </button>
         </div>
     );
 };

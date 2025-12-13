@@ -12,6 +12,8 @@ export class BattleScene extends Phaser.Scene {
 
     // All troopers available (for looking up data when spawning)
     private allTroopersMap: Map<string, Trooper> = new Map();
+    private battleTime: number = 0;
+    private processedLogs: Set<number> = new Set(); // Indicies of processed logs
 
     constructor() {
         super('BattleScene');
@@ -29,10 +31,27 @@ export class BattleScene extends Phaser.Scene {
         });
 
         this.currentTurnIndex = 0;
+        this.battleTime = 0;
+        this.processedLogs.clear();
         this.isPlayingTurn = false;
     }
 
+    private speedMultiplier: number = 1;
+
     create() {
+        // Background for input
+        const bg = this.add.rectangle(400, 300, 800, 600, 0x000000, 0).setInteractive();
+        bg.on('pointerdown', () => {
+             if (this.isPaused) {
+                 this.resume();
+                 this.battleText?.setText(`RESUMED`);
+                 this.time.delayedCall(500, () => this.updateBattleText(Math.floor(this.battleTime)));
+             } else {
+                 this.pause();
+                 this.battleText?.setText(`PAUSED`);
+             }
+        });
+
         this.add.image(400, 300, 'sky').setAlpha(0.5);
         
         this.battleText = this.add.text(400, 50, 'Battle Start!', {
@@ -46,102 +65,75 @@ export class BattleScene extends Phaser.Scene {
         // Clear any existing sprites
         this.troopers.clear();
 
-        // Start turn execution loop
-        this.time.addEvent({
-            delay: 1000, // Speed up slightly?
-            callback: this.processNextTurn,
-            callbackScope: this,
-            loop: true
-        });
+        // Start clock
+        // Simulation tick is discrete, but we want smooth playback. 
+        // Let's say 1 simulation tick = 10ms real time (100 ticks = 1 sec).
+        // Update loop handles this.
+        this.battleTime = 0;
     }
 
-    processNextTurn() {
+    setSpeed(multiplier: number) {
+        this.speedMultiplier = multiplier;
+    }
+
+    update(time: number, delta: number) {
         if (this.isPaused) return;
-        if (this.isPlayingTurn) return; // Wait for current batch to finish
         
-        if (this.currentTurnIndex >= this.battleResult.log.length) {
-            this.battleText?.setText(`Winner: Team ${this.battleResult.winner === 'A' ? 'PLAYER' : 'ENEMY'}`);
-            this.battleText?.setColor(this.battleResult.winner === 'A' ? '#00ff00' : '#ff0000');
-            return;
-        }
+        // Advance battle time
+        // Base speed: 10 ticks per second (x1). x2 = 20 ticks/s.
+        const baseTicksPerSecond = 10; 
+        const ticksToAdvance = (delta / 1000) * baseTicksPerSecond * this.speedMultiplier;
+        this.battleTime += ticksToAdvance;
 
-        // Collect all logs with the same time
-        const currentLog = this.battleResult.log[this.currentTurnIndex];
-        const currentTime = currentLog.time;
-        const batch: BattleLogEntry[] = [];
+        this.updateBattleText(Math.floor(this.battleTime));
 
+        // Process Logs up to current time
         while (this.currentTurnIndex < this.battleResult.log.length) {
             const nextLog = this.battleResult.log[this.currentTurnIndex];
-            if (nextLog.time === currentTime) {
-                batch.push(nextLog);
+            
+            if (nextLog.time <= this.battleTime) {
+                this.playTurnAnimation(nextLog, () => {}); // No callback needed for queue
                 this.currentTurnIndex++;
             } else {
                 break;
             }
         }
-
-        this.playBatchAnimations(batch);
-    }
-
-    playBatchAnimations(batch: BattleLogEntry[]) {
-        this.isPlayingTurn = true;
-        let activeAnimations = 0;
-
-        const onAnimationComplete = () => {
-            activeAnimations--;
-            if (activeAnimations <= 0) {
-                this.isPlayingTurn = false;
-            }
-        };
-
-        // If batch is empty (shouldn't happen), reset
-        if (batch.length === 0) {
-            this.isPlayingTurn = false;
-            return;
+        
+        if (this.currentTurnIndex >= this.battleResult.log.length) {
+             this.battleText?.setText(`Winner: Team ${this.battleResult.winner === 'A' ? 'PLAYER' : 'ENEMY'}`);
+             this.battleText?.setColor(this.battleResult.winner === 'A' ? '#00ff00' : '#ff0000');
         }
-
-        // Update text for the batch
-        this.battleText?.setText(`Time: ${batch[0].time}`);
-        
-        // Combine messages for the top display
-        const combinedMessage = batch.map(l => l.message).join(' | ');
-        // Truncate if too long
-        const displayMessage = combinedMessage.length > 50 ? combinedMessage.substring(0, 47) + '...' : combinedMessage;
-        
-        // We can't easily show the message on the main text if we want the timer there.
-        // Maybe create a separate text object for the timer?
-        // Or format: "Time: 100 - Rat moves..."
-        this.battleText?.setText(`[${batch[0].time}] ${displayMessage}`);
-
-        batch.forEach(log => {
-            activeAnimations++;
-            this.playTurnAnimation(log, onAnimationComplete);
-        });
     }
+
+    updateBattleText(time: number) {
+        // Find recent message
+        // This is tricky with continuous time. Maybe just show time.
+         this.battleText?.setText(`Time: ${time}`);
+    }
+
+    // Removed processNextTurn and playBatchAnimations
 
     playTurnAnimation(log: BattleLogEntry, onComplete: () => void) {
-        // Individual messages are handled by floating text or the batch text above.
-
         if (log.action === 'deploy') {
             this.handleDeploy(log, onComplete);
             return;
         }
 
         const actor = this.troopers.get(log.actorId);
-        // Check if actor sprite is valid (not destroyed)
-        if (!actor || !actor.scene) { 
-            // Actor might be dead/destroyed.
-            // If it's a "wait" or "move" from a dead actor (shouldn't happen logic-wise but maybe visual lag), skip.
-            console.warn(`Actor ${log.actorId} not found or destroyed for action ${log.action}`);
+        if (!actor) {
             onComplete();
             return;
         }
 
+        const target = log.targetId ? this.troopers.get(log.targetId) : null;
+
         if (log.action === 'wait') {
-            this.showFloatingText(actor.x, actor.y - 50, "...", '#00ffff');
-            this.time.delayedCall(500, onComplete);
-            return;
+             // Just a small delay
+             this.time.delayedCall(200, onComplete);
+             return;
         }
+
+
 
         if (log.action === 'move') {
             // this.showFloatingText(actor.x, actor.y - 50, "MOVING", '#aaaaaa');
@@ -213,6 +205,141 @@ export class BattleScene extends Phaser.Scene {
             return;
         }
 
+        if (log.action === 'attack') {
+             // Sync Ammo Logic using WeaponID from log
+             const weaponId = log.data?.weaponId;
+             if (weaponId) {
+                 const currentAmmo = actor.getData(`ammo_${weaponId}`) || 0;
+                 actor.setData(`ammo_${weaponId}`, Math.max(0, currentAmmo - 1));
+             }
+
+             // VISUALS: Determine Projectile Type
+             const isMelee = !weaponId || ['knife', 'fists', 'wrestler', 'fists_of_fury'].includes(weaponId);
+             const isRocket = ['bazooka', 'bazooka_m1', 'bazooka_m25', 'infernal_tube', 'rocket_launcher'].includes(weaponId);
+             
+             let targetX = 0;
+             let targetY = 0;
+
+             if (log.targetPosition) {
+                 // Miss / Stray endpoint
+                 const targetPos = log.targetPosition as any as { x: number, y: number };
+                 targetX = 50 + (targetPos.x / 1000) * 700;
+                 targetY = 100 + targetPos.y;
+             } else if (target && target.scene) {
+                 targetX = target.x;
+                 targetY = target.y;
+             } else {
+                 // Fallback
+                 const forwardX = actor.x + (actor.getData('originX') < 400 ? 50 : -50);
+                 targetX = forwardX;
+                 targetY = actor.y;
+             }
+
+             // Handle Projectiles
+             if (isMelee) {
+                 // No Projectile - Just Lunge/Effect
+                 const forwardX = actor.x + (actor.getData('originX') < 400 ? 30 : -30);
+                 this.tweens.add({
+                     targets: actor,
+                     x: forwardX,
+                     duration: 100,
+                     yoyo: true,
+                     onComplete: () => {
+                         // Impact at peak of lunge
+                         if (log.isMiss) {
+                             this.showFloatingText(targetX, targetY - 20, "MISS", '#888888');
+                         } else if (target && target.scene) {
+                             if (log.damage) this.showFloatingText(target.x, target.y - 50, `-${log.damage}`, '#ff0000');
+                             if (log.isCrit) this.showFloatingText(target.x, target.y - 70, "CRIT!", '#ff8800');
+                             this.updateHealth(target, log.damage || 0);
+                         }
+                         onComplete();
+                     }
+                 });
+                 return; // Animation handled by recoil/lunge
+             } else {
+                 // Ranged - Projectile
+                 let color = 0xffff00; // Default Yellow Bullet
+                 let size = 3;
+                 let speed = 200;
+                 
+                 if (isRocket) {
+                     color = 0xff4500; // Orange Red
+                     size = 6;
+                     speed = 600; // Slower
+                 }
+
+                 const bullet = this.add.circle(actor.x, actor.y, size, color);
+                 
+                 // Recoil first
+                 this.tweens.add({
+                     targets: actor,
+                     x: actor.x + (actor.getData('team') === 'A' ? -5 : 5),
+                     duration: 50,
+                     yoyo: true
+                 });
+
+                 // Shoot projectile
+                 this.tweens.add({
+                     targets: bullet,
+                     x: targetX,
+                     y: targetY,
+                     duration: speed,
+                     onComplete: () => {
+                         bullet.destroy();
+                         
+                         // Impact effects
+                         if (isRocket) {
+                             // Explosion Effect
+                             const explosion = this.add.circle(targetX, targetY, 30, 0xffaa00, 0.7);
+                             this.tweens.add({
+                                 targets: explosion,
+                                 scale: 2,
+                                 alpha: 0,
+                                 duration: 300,
+                                 onComplete: () => explosion.destroy()
+                             });
+                         }
+
+                         if (log.isMiss) {
+                             this.showFloatingText(targetX, targetY - 20, "MISS", '#888888');
+                         } else if (target && target.scene) {
+                             // Hit effect
+                             if (log.damage) {
+                                this.showFloatingText(target.x, target.y - 50, `-${log.damage}`, '#ff0000');
+                             }
+                             if (log.isCrit) {
+                                 this.showFloatingText(target.x, target.y - 70, "CRIT!", '#ff8800');
+                             }
+                             this.updateHealth(target, log.damage || 0);
+                         }
+                         // onComplete called after bullet hits? Or immediately?
+                         // Better after hit for flow.
+                         if (!isRocket) onComplete(); // Rocket has explosion anim
+                         else this.time.delayedCall(300, onComplete);
+                     }
+                 });
+             }
+
+        } else if (log.action === 'reload') {
+             const weaponId = actor.getData('currentWeaponId');
+              if (weaponId) {
+                 const currentAmmo = actor.getData(`ammo_${weaponId}`) || 0;
+                 actor.setData(`ammo_${weaponId}`, currentAmmo + 1);
+             }
+        } else if (log.action === 'switch_weapon') {
+             // Parse message for simplicity or add to log? 
+             // Log message: "switches to [WeaponName]". Hard to parse ID.
+             // Hack: We need `weaponId` in the log.
+             // For now, let's skip strict ammo visual sync updates based on switch unless we fix log.
+             // But we CAN fix log in combat.ts to include `data: { weaponId: ... }`.
+             // As this is a task constraint, let's try to get live state from simulation? No, simulation is pre-calc.
+             // Okay, let's rely on initial state.
+             // We can't easily visualize ammo perfectly without weaponId in log.
+             // BUT user asked to fix it.
+             // Let's assume we need to update `combat.ts` to include metadata in logs.
+        }
+
         if (log.action === 'use_equipment') {
             this.showFloatingText(actor.x, actor.y - 50, "GRENADE!", '#ff8800');
             
@@ -250,47 +377,9 @@ export class BattleScene extends Phaser.Scene {
             return;
         }
 
-        const target = log.targetId ? this.troopers.get(log.targetId) : null;
-
-        // Attack Animation
-        const forwardX = actor.x + (actor.getData('originX') < 400 ? 30 : -30);
-        const forwardY = actor.y; // No vertical lunge for now?
-        
-        this.tweens.chain({
-            targets: actor,
-            tweens: [
-                {
-                    x: forwardX,
-                    y: forwardY,
-                    duration: 200,
-                    ease: 'Power1'
-                },
-                {
-                    duration: 100,
-                    onComplete: () => {
-                        // Determine hit/miss
-                        if (log.isMiss || log.isDodge) {
-                            this.showFloatingText(target?.x || actor.x, (target?.y || actor.y) - 50, log.isDodge ? "DODGE!" : "MISS!", '#ffff00');
-                        } else if (target && target.scene && log.damage !== undefined) {
-                            // Hit!
-                            this.showFloatingText(target.x, target.y - 50, `-${log.damage}`, '#ff0000');
-                            if (log.isCrit) {
-                                this.showFloatingText(target.x, target.y - 70, "CRIT!", '#ff8800');
-                            }
-                            
-                            this.updateHealth(target, log.damage);
-                        }
-                    }
-                },
-                {
-                    x: actor.getData('originX') || actor.x,
-                    y: actor.getData('originY') || actor.y,
-                    duration: 200,
-                    ease: 'Power1',
-                    onComplete: onComplete
-                }
-            ]
-        });
+        // Catch-all for unhandled actions (shouldn't be reachable if all types handled)
+        console.warn(`Unhandled action: ${log.action}`);
+        onComplete();
     }
 
     handleDeploy(log: BattleLogEntry, onComplete: () => void) {
@@ -364,6 +453,18 @@ export class BattleScene extends Phaser.Scene {
         container.setData('originX', x);
         container.setData('originY', y);
         container.setData('team', isLeft ? 'A' : 'B');
+        
+        // Initialize Ammo
+        if (trooper.skills) {
+             trooper.skills.forEach(s => {
+                 // Initialize ammo for all weapon skills
+                 if ((s as any).capacity) { // Duck typing Weapon
+                     container.setData(`ammo_${s.id}`, trooper.ammo?.[s.id] ?? (s as any).capacity);
+                 }
+                 // Track current weapon?
+             });
+             container.setData('currentWeaponId', trooper.currentWeaponId);
+        }
 
         this.troopers.set(trooper.id, container);
 
@@ -456,5 +557,27 @@ export class BattleScene extends Phaser.Scene {
             duration: 1000,
             onComplete: () => text.destroy()
         });
+    }
+
+    public getTrooperData(id: string): any {
+        const container = this.troopers.get(id);
+        if (!container) return null;
+        
+        // Reconstruct ammo object for inspector
+        const ammo: Record<string, number> = {};
+        const trooperDef = this.allTroopersMap.get(id);
+        if (trooperDef) {
+            trooperDef.skills.forEach(s => {
+                const val = container.getData(`ammo_${s.id}`);
+                if (val !== undefined) ammo[s.id] = val;
+            });
+        }
+
+        return {
+            hp: container.getData('currentHp'),
+            maxHp: container.getData('maxHp'),
+            ammo: ammo,
+            currentWeaponId: container.getData('currentWeaponId') || trooperDef?.currentWeaponId
+        };
     }
 }

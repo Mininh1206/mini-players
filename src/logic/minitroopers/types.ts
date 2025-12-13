@@ -64,6 +64,7 @@ export interface BattleLogEntry {
     isMiss?: boolean;
     isDodge?: boolean;
     message: string;
+    data?: any; // Extensible metadata (e.g. weaponId)
 }
 
 export interface BattleResult {

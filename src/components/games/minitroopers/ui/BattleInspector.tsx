@@ -1,6 +1,8 @@
 import React from 'react';
 import type { Trooper } from '@/logic/minitroopers/types';
 import SkillTooltip from './SkillTooltip';
+import { Weapon } from '@/logic/minitroopers/classes/Skill';
+import { getSkillDefinition } from '@/logic/minitroopers/utils';
 
 interface BattleInspectorProps {
     trooper: Trooper;
@@ -67,22 +69,81 @@ const BattleInspector: React.FC<BattleInspectorProps> = ({ trooper, onClose, t }
                 <div className="space-y-4">
                     <div>
                         <h3 className="text-xs font-bold text-gray-500 uppercase mb-2">{t('weapon')}</h3>
-                        <div className="flex gap-2">
-                            {trooper.skills.filter(s => s.id === trooper.skills[0]?.id).map((skill, idx) => (
-                                <div key={idx} className="relative group">
-                                    <div className="bg-gray-800 p-3 rounded border border-gray-600 hover:border-red-500 transition cursor-help">
-                                        <div className="text-2xl">{skill.icon}</div>
-                                    </div>
-                                    <SkillTooltip skill={skill} t={t} />
-                                </div>
-                            ))}
+                        <div className="space-y-2">
+                            {trooper.skills
+                                .map(s => getSkillDefinition(s.id))
+                                .filter((s): s is Weapon => s instanceof Weapon)
+                                .map((weapon, idx) => {
+                                    const isEquipped = trooper.currentWeaponId === weapon.id;
+                                    const currentAmmo = trooper.ammo?.[weapon.id] ?? weapon.capacity;
+                                    
+                                    return (
+                                        <div 
+                                            key={idx} 
+                                            className={`relative group bg-gray-800 rounded border transition-all ${
+                                                isEquipped 
+                                                 ? 'border-yellow-500 ring-1 ring-yellow-500 shadow-md shadow-yellow-900/20' 
+                                                 : 'border-gray-600 hover:border-gray-400'
+                                            }`}
+                                        >
+                                            <div className="flex items-center p-2 gap-3">
+                                                <div className="text-2xl bg-gray-900 p-2 rounded">{weapon.icon}</div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <span className={`font-bold text-sm truncate ${isEquipped ? 'text-yellow-400' : 'text-gray-200'}`}>
+                                                            {t(`skill_${weapon.id}_name`) !== `skill_${weapon.id}_name` ? t(`skill_${weapon.id}_name`) : weapon.name}
+                                                        </span>
+                                                        {isEquipped && <span className="text-[10px] text-yellow-500 font-bold uppercase tracking-wider bg-yellow-900/30 px-1.5 py-0.5 rounded border border-yellow-900/50">Equipped</span>}
+                                                    </div>
+                                                    
+                                                    {/* Ammo Bar */}
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="flex-1 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                                                            <div 
+                                                                className="h-full bg-yellow-600"
+                                                                style={{ width: `${(currentAmmo / weapon.capacity) * 100}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className="text-xs font-mono text-gray-400">
+                                                            {currentAmmo}/{weapon.capacity}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Detailed Stats Row */}
+                                            <div className="grid grid-cols-4 gap-1 px-2 pb-2 text-[10px] text-gray-400 text-center border-t border-gray-700 mt-1 pt-1">
+                                                <div title={t('damage')}>
+                                                    <span className="text-gray-500 block uppercase text-[8px]">DMG</span>
+                                                    <span className="text-gray-200 font-bold">{weapon.damage}</span>
+                                                </div>
+                                                <div title={t('range')}>
+                                                    <span className="text-gray-500 block uppercase text-[8px]">RNG</span>
+                                                    <span className="text-gray-200 font-bold">{weapon.range}</span>
+                                                </div>
+                                                <div title={t('crit')}>
+                                                    <span className="text-gray-500 block uppercase text-[8px]">CRIT</span>
+                                                    <span className="text-gray-200 font-bold">{weapon.crit}%</span>
+                                                </div>
+                                                <div title={t('hit_chance')}>
+                                                    <span className="text-gray-500 block uppercase text-[8px]">AIM</span>
+                                                    <span className="text-gray-200 font-bold">{weapon.aim}%</span>
+                                                </div>
+                                            </div>
+
+                                            <SkillTooltip skill={weapon} t={t} />
+                                        </div>
+                                    );
+                                })}
                         </div>
                     </div>
 
                     <div>
                         <h3 className="text-xs font-bold text-gray-500 uppercase mb-2">{t('skills')}</h3>
                         <div className="flex flex-wrap gap-2">
-                            {trooper.skills.filter(s => s.id !== trooper.skills[0]?.id).map((skill, idx) => (
+                            {trooper.skills
+                                .filter(s => !(getSkillDefinition(s.id) instanceof Weapon))
+                                .map((skill, idx) => (
                                 <div key={idx} className="relative group">
                                     <div className="bg-gray-800 p-2 rounded border border-gray-600 hover:border-yellow-500 transition cursor-help">
                                         <div className="text-xl">{skill.icon}</div>
