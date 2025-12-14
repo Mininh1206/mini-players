@@ -189,9 +189,44 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
             if (actor.isDead) continue;
 
             // Recovery Check
+            // Recovery Check
             if (actor.recoveryTime && actor.recoveryTime > 0) {
                 actor.recoveryTime--;
                 continue;
+            }
+
+            // --- BURST FIRE HANDLING ---
+            if (actor.burstState) {
+                const burst = actor.burstState!;
+                // Validate Target
+                const targetId = burst.targetId;
+                const target = context.allTroopers.find(t => t.id === targetId);
+                const weaponId = burst.weaponId;
+                const weapon = actor.skills.find(s => s.id === weaponId) as Weapon | undefined;
+
+                if (target && !target.isDead && weapon && (actor.ammo?.[weaponId] || 0) > 0) {
+                    // Fire Shot
+                    resolveWeaponShot(actor, target, weapon, context);
+                    actor.ammo![weaponId]--;
+                    
+                    burst.shotsRemaining--;
+                    
+                    if (burst.shotsRemaining > 0 && (actor.ammo?.[weaponId] || 0) > 0 && !target.isDead) {
+                        // Continue Burst
+                         actor.recoveryTime = 4; // 4 ticks between shots (~40ms?)
+                    } else {
+                        // End Burst
+                        delete actor.burstState;
+                        const baseRecovery = (weapon as any).recovery || 10;
+                        actor.recoveryTime = Math.max(0, Math.max(10, baseRecovery - (actor.attributes.recoveryMod || 0) * 10));
+                    }
+                } else {
+                    // Burst Interrupted (Target dead, no ammo, etc)
+                    delete actor.burstState;
+                     const baseRecovery = (weapon && (weapon as any).recovery) || 10;
+                    actor.recoveryTime = Math.max(0, Math.max(10, baseRecovery - (actor.attributes.recoveryMod || 0) * 10));
+                }
+                continue; // Skip normal action decision this tick
             }
 
             // Action Timer Accumulation (Only if fully recovered)
@@ -285,12 +320,12 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
                         if (safeWeapon) {
                             actor.currentWeaponId = safeWeapon.id;
                             equippedWeapon = safeWeapon as Weapon;
-                            log.push({ time, actorId: actor.id, actorName: actor.name, action: 'swap', message: `${actor.name} switches weapon (Too close for explosives!).` });
+                            log.push({ time, actorId: actor.id, actorName: actor.name, action: 'switch_weapon', message: `${actor.name} switches weapon (Too close for explosives!).` });
                             actor.actionTimer += 200; // Small penalty
                             actionTaken = true; // Act next tick with new weapon
                         } else {
                             if (dist < 50) {
-                                log.push({ time, actorId: actor.id, actorName: actor.name, action: 'melee', targetId: target.id, message: `${actor.name} punches ${target.name}!` });
+                                log.push({ time, actorId: actor.id, actorName: actor.name, action: 'attack', damage: 3, targetId: target.id, message: `${actor.name} punches ${target.name}!` });
                                 target.attributes.hp -= 3; // Weak punch
                                 actor.recoveryTime = 10;
                                 actionTaken = true;
@@ -313,224 +348,73 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
                     const ammo = actor.ammo?.[equippedWeapon.id] || 0;
 
                     if (dist <= range && ammo > 0) {
-                        // ATTACK
-                        const bursts = (equippedWeapon as any).bursts || 1;
-                        const shots = Math.min(bursts, ammo);
-                        actor.ammo![equippedWeapon.id] -= shots;
+                        
+                        // Check Line of Fire (Friendly Fire) - ONLY FOR FIRST SHOT DECISION
+                        let lofBlocked = false; 
+                        
+                         const vX = (target!.position?.x || 0) - (actor.position?.x || 0);
+                         const vY = (target!.position?.y || 0) - (actor.position?.y || 0);
+                         const distToTarget = Math.sqrt(vX * vX + vY * vY);
+                         const dirX = distToTarget > 0 ? vX / distToTarget : 0;
+                         const dirY = distToTarget > 0 ? vY / distToTarget : 0;
 
-                        // Fire Loop
-                        for (let i = 0; i < shots; i++) {
-                            if (target.isDead) break;
+                        if (distToTarget > 0) {
+                             const friendlies = allTroopers.filter(a => a.team === actor.team && a.id !== actor.id && !a.isDead);
+                             for (const friend of friendlies) {
+                                 const fx = (friend.position?.x || 0) - (actor.position?.x || 0);
+                                 const fy = (friend.position?.y || 0) - (actor.position?.y || 0);
+                                 const fDot = fx * dirX + fy * dirY;
 
-                            const weaponAccuracy = (equippedWeapon as any).aim || 100;
-                            const baseAim = actor.attributes.aim;
-                            let aimPenalty = 0;
-                            const targetPart = actor.tactics?.targetPart || 'any';
-                            if (targetPart === 'head' || targetPart === 'heart') aimPenalty = 25;
-                            else if (targetPart === 'arm' || targetPart === 'leg') aimPenalty = 10;
+                                 if (fDot > 0 && fDot < distToTarget) { // Between shooter and target
+                                     const fPerpX = fx - fDot * dirX;
+                                     const fPerpY = fy - fDot * dirY;
+                                     const fDistFromLine = Math.sqrt(fPerpX * fPerpX + fPerpY * fPerpY);
+                                     if (fDistFromLine < 20) { // Hitbox check
+                                         lofBlocked = true;
+                                         break;
+                                     }
+                                 }
+                             }
+                        }
 
-                            const finalHitChance = ((baseAim - aimPenalty) * (weaponAccuracy / 100)) - target.attributes.dodge;
+                        if (lofBlocked && Math.random() < 0.7) {
+                             // Reposition Logic
+                            const moveSpeed = (actor.attributes.speed || 100) / 10;
+                            const moveDist = moveSpeed;
+                            const angle = Math.atan2(vY, vX);
+                            const strafeAngle = angle + (Math.random() > 0.5 ? Math.PI / 2 : -Math.PI / 2);
+                            let newX = (actor.position?.x || 0) + Math.cos(strafeAngle) * moveDist;
+                            let newY = (actor.position?.y || 0) + Math.sin(strafeAngle) * moveDist;
 
-                            if (Math.random() * 100 <= finalHitChance) {
-                                let damage = ((equippedWeapon as any).damage || 5) + (actor.attributes.damage || 0);
-                                let isCrit = false;
-                                // INTELLIGENCE: Check Line of Fire (Friendly Fire Avoidance)
-                                let lofBlocked = false;
-                                const vX = (target.position?.x || 0) - (actor.position?.x || 0);
-                                const vY = (target.position?.y || 0) - (actor.position?.y || 0);
-                                const distToTarget = Math.sqrt(vX * vX + vY * vY);
+                            newX = Math.max(0, Math.min(1000, newX));
+                            newY = Math.max(0, Math.min(400, newY));
 
-                                let dirX = 0;
-                                let dirY = 0;
-
-                                if (distToTarget > 0) {
-                                    dirX = vX / distToTarget;
-                                    dirY = vY / distToTarget;
-
-                                    // Check if any FRIENDLY is in the way
-                                    const friendlies = allTroopers.filter(a => a.team === actor.team && a.id !== actor.id && !a.isDead);
-                                    for (const friend of friendlies) {
-                                        const fx = (friend.position?.x || 0) - (actor.position?.x || 0);
-                                        const fy = (friend.position?.y || 0) - (actor.position?.y || 0);
-                                        const fDot = fx * dirX + fy * dirY;
-
-                                        if (fDot > 0 && fDot < distToTarget) { // Between shooter and target
-                                            const fPerpX = fx - fDot * dirX;
-                                            const fPerpY = fy - fDot * dirY;
-                                            const fDistFromLine = Math.sqrt(fPerpX * fPerpX + fPerpY * fPerpY);
-                                            if (fDistFromLine < 20) { // Hitbox check
-                                                lofBlocked = true;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // DECISION: If LOF blocked, maybe move instead?
-                                if (lofBlocked && Math.random() < 0.7) {
-                                    // 70% chance to reposition if blocked
-                                    const moveSpeed = (actor.attributes.speed || 100) / 10;
-                                    const moveDist = moveSpeed;
-                                    const angle = Math.atan2(vY, vX);
-                                    const strafeAngle = angle + (Math.random() > 0.5 ? Math.PI / 2 : -Math.PI / 2);
-                                    let newX = (actor.position?.x || 0) + Math.cos(strafeAngle) * moveDist;
-                                    let newY = (actor.position?.y || 0) + Math.sin(strafeAngle) * moveDist;
-
-                                    // Clamp
-                                    newX = Math.max(0, Math.min(1000, newX));
-                                    newY = Math.max(0, Math.min(400, newY));
-
-                                    actor.position = { x: newX, y: newY };
-                                    log.push({
-                                        time, actorId: actor.id, actorName: actor.name, action: 'move', targetPosition: actor.position,
-                                        message: `${actor.name} repositions to clear line of fire.`
-                                    });
-                                    actor.recoveryTime = 10;
-                                    actionTaken = true;
-                                } else {
-                                    // SHOOT
-                                    let hitChance = ((equippedWeapon as any).aim || 100) + (actor.attributes.aim || 0) - (target.attributes.dodge || 0);
-
-                                    // BALLISTICS SIMULATION
-                                    let actualTarget = target;
-                                    let obstruction: Trooper | null = null;
-                                    let isObstructionHit = false;
-
-                                    const potentialObstacles = allTroopers.filter(a => a.id !== actor.id && !a.isDead);
-                                    let minObstacleDist = distToTarget;
-
-                                    for (const obs of potentialObstacles) {
-                                        if (obs.id === target.id) continue;
-
-                                        const ox = (obs.position?.x || 0) - (actor.position?.x || 0);
-                                        const oy = (obs.position?.y || 0) - (actor.position?.y || 0);
-                                        const oDot = ox * dirX + oy * dirY;
-
-                                        if (oDot > 0 && oDot < minObstacleDist) { // Before target
-                                            const oPerpX = ox - oDot * dirX;
-                                            const oPerpY = oy - oDot * dirY;
-                                            const oDistFromLine = Math.sqrt(oPerpX * oPerpX + oPerpY * oPerpY);
-
-                                            if (oDistFromLine < 20) { // Hitbox
-                                                minObstacleDist = oDot;
-                                                obstruction = obs;
-                                            }
-                                        }
-                                    }
-
-                                    if (obstruction) {
-                                        actualTarget = obstruction;
-                                        isObstructionHit = true;
-                                    }
-
-                                    const roll = Math.random() * 100;
-                                    let isHit = roll <= hitChance;
-                                    if (isObstructionHit) isHit = true;
-                                    isCrit = Math.random() * 100 <= ((equippedWeapon as any).crit || 0) + (actor.attributes.critChance || 0);
-
-                                    const weaponArea = (equippedWeapon as any).area || 0;
-                                    const weaponStun = (equippedWeapon as any).stun || 0;
-
-                                    if (weaponArea > 0) {
-                                        // --- AOE EXPLOSION LOGIC ---
-                                        let impactX = actualTarget.position!.x;
-                                        let impactY = actualTarget.position!.y;
-                                        const blastRadius = weaponArea;
-
-                                        if (isHit) {
-                                            let primaryDamage = ((equippedWeapon as any).damage || 5) + (actor.attributes.damage || 0);
-                                            if (isCrit) primaryDamage *= 1.5;
-                                            primaryDamage = Math.max(1, Math.floor(primaryDamage - (actualTarget.attributes.armor || 0)));
-                                            actualTarget.attributes.hp = Math.max(0, actualTarget.attributes.hp - primaryDamage);
-                                            if (actualTarget.attributes.hp === 0) actualTarget.isDead = true;
-
-                                            log.push({
-                                                time, actorId: actor.id, actorName: actor.name, targetId: actualTarget.id, targetName: actualTarget.name,
-                                                action: 'attack', damage: primaryDamage, isCrit, message: `${actor.name} hits ${actualTarget.name} with explosion for ${primaryDamage}`,
-                                                data: { weaponId: equippedWeapon.id }
-                                            });
-                                        } else {
-                                            // Miss Logic: Explode somewhere else
-                                            const missDistance = 50 + Math.random() * 150;
-                                            const missAngle = Math.atan2(dirY, dirX) + (Math.random() - 0.5);
-                                            impactX = actualTarget.position!.x + Math.cos(missAngle) * missDistance;
-                                            impactY = actualTarget.position!.y + Math.sin(missAngle) * missDistance;
-                                            impactX = Math.max(0, Math.min(1000, impactX));
-                                            impactY = Math.max(0, Math.min(400, impactY));
-
-                                            log.push({
-                                                time, actorId: actor.id, actorName: actor.name,
-                                                action: 'attack', isMiss: true, message: `${actor.name} misses! Shot lands nearby.`,
-                                                targetPosition: { x: impactX, y: impactY },
-                                                data: { weaponId: equippedWeapon.id }
-                                            });
-                                        }
-
-                                        // Area Damage & Knockback
-                                        const affectedUnits = allTroopers.filter(t => !t.isDead && t.id !== actor.id);
-                                        affectedUnits.forEach(unit => {
-                                            const distToImpact = Math.sqrt(Math.pow((unit.position!.x) - impactX, 2) + Math.pow((unit.position!.y) - impactY, 2));
-                                            if (distToImpact <= blastRadius) {
-                                                const isPrimaryHit = (unit.id === actualTarget.id && isHit);
-                                                if (!isPrimaryHit) {
-                                                    let splashDamage = ((equippedWeapon as any).damage || 5) + (actor.attributes.damage || 0);
-                                                    const falloff = 0.5 + 0.5 * (1 - (distToImpact / blastRadius));
-                                                    splashDamage = Math.floor(splashDamage * falloff);
-                                                    splashDamage = Math.max(0, splashDamage - (unit.attributes.armor || 0));
-
-                                                    if (splashDamage > 0) {
-                                                        unit.attributes.hp = Math.max(0, unit.attributes.hp - splashDamage);
-                                                        if (unit.attributes.hp === 0) unit.isDead = true;
-                                                        log.push({
-                                                            time, actorId: actor.id, actorName: actor.name, targetId: unit.id, targetName: unit.name,
-                                                            action: 'attack', damage: splashDamage, message: `${unit.name} caught in blast (${splashDamage} dmg).`
-                                                        });
-                                                    }
-                                                }
-                                                if (weaponStun > 0) {
-                                                    const distFactor = distToImpact > 1 ? (1 - (distToImpact / blastRadius)) : 1;
-                                                    const pushForce = weaponStun * distFactor;
-                                                    let angle = (distToImpact > 1) ? Math.atan2((unit.position!.y) - impactY, (unit.position!.x) - impactX) : Math.random() * Math.PI * 2;
-                                                    unit.position!.x = Math.max(0, Math.min(1000, unit.position!.x + Math.cos(angle) * pushForce));
-                                                    unit.position!.y = Math.max(0, Math.min(400, unit.position!.y + Math.sin(angle) * pushForce));
-                                                }
-                                            }
-                                        });
-
-                                    } else {
-                                        // Standard Single Target
-                                        if (isHit) {
-                                            let damage = ((equippedWeapon as any).damage || 5) + (actor.attributes.damage || 0);
-                                            if (isCrit) damage *= 1.5;
-                                            damage = Math.max(1, Math.floor(damage - (actualTarget.attributes.armor || 0)));
-                                            actualTarget.attributes.hp = Math.max(0, actualTarget.attributes.hp - damage);
-                                            if (actualTarget.attributes.hp === 0) actualTarget.isDead = true;
-                                            log.push({
-                                                time, actorId: actor.id, actorName: actor.name, targetId: actualTarget.id, targetName: actualTarget.name,
-                                                action: 'attack', damage, isCrit, message: `${actor.name} hits ${actualTarget.name}${isObstructionHit ? ' (OBSTRUCTION)' : ''} for ${damage}`,
-                                                data: { weaponId: equippedWeapon.id }
-                                            });
-                                        } else {
-                                            const missX = (target.position?.x || 0) + dirX * 200;
-                                            const missY = (target.position?.y || 0) + dirY * 200;
-                                            log.push({
-                                                time, actorId: actor.id, actorName: actor.name, targetId: target.id, targetName: target.name,
-                                                action: 'attack', isMiss: true, message: `${actor.name} misses ${target.name}.`,
-                                                targetPosition: { x: missX, y: missY },
-                                                data: { weaponId: equippedWeapon.id }
-                                            });
-                                        }
-                                    }
-
-                                    // Consume Ammo & Recovery
-                                    if (actor.ammo && actor.ammo[equippedWeapon.id]) {
-                                        actor.ammo[equippedWeapon.id]--;
-                                    }
-                                    const baseRecovery = (equippedWeapon as any).recovery || 10;
-                                    actor.recoveryTime = Math.max(0, Math.max(10, baseRecovery - (actor.attributes.recoveryMod || 0) * 10));
-                                    actionTaken = true;
-                                }
+                            actor.position = { x: newX, y: newY };
+                            log.push({
+                                time, actorId: actor.id, actorName: actor.name, action: 'move', targetPosition: actor.position,
+                                message: `${actor.name} repositions to clear line of fire.`
+                            });
+                            actor.recoveryTime = 10;
+                            actionTaken = true;
+                        } else {
+                            // EXECUTE ATTACK (First Shot)
+                            const bursts = (equippedWeapon as any).bursts || 1;
+                            
+                            resolveWeaponShot(actor, target!, equippedWeapon!, context);
+                            actor.ammo![equippedWeapon!.id]--;
+                            
+                            if (bursts > 1 && (actor.ammo![equippedWeapon!.id] || 0) > 0 && !target!.isDead) {
+                                actor.burstState = {
+                                    shotsRemaining: bursts - 1,
+                                    targetId: target!.id,
+                                    weaponId: equippedWeapon!.id
+                                };
+                                actor.recoveryTime = 4;
+                            } else {
+                                const baseRecovery = (equippedWeapon as any).recovery || 10;
+                                actor.recoveryTime = Math.max(0, Math.max(10, baseRecovery - (actor.attributes.recoveryMod || 0) * 10));
                             }
+                            actionTaken = true;
                         }
                     }
                 }
@@ -576,11 +460,11 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
                 // 4. Melee
                 if (!actionTaken && dist <= 50) {
                     const damage = 5 + (actor.attributes.damage || 0);
-                    target.attributes.hp = Math.max(0, target.attributes.hp - damage);
-                    if (target.attributes.hp === 0) target.isDead = true;
+                    target!.attributes.hp = Math.max(0, target!.attributes.hp - damage);
+                    if (target!.attributes.hp === 0) target!.isDead = true;
                     log.push({
-                        time, actorId: actor.id, actorName: actor.name, targetId: target.id, targetName: target.name,
-                        action: 'attack', damage, message: `${actor.name} hits ${target.name} with Fists for ${damage}`
+                        time, actorId: actor.id, actorName: actor.name, targetId: target!.id, targetName: target!.name,
+                        action: 'attack', damage, message: `${actor.name} hits ${target!.name} with Fists for ${damage}`
                     });
                     actor.recoveryTime = 20;
                     actionTaken = true;
@@ -589,8 +473,8 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
                 // 5. Move
                 if (!actionTaken) {
                     const moveSpeed = (actor.attributes.speed || 100) / 2;
-                    const dx = (target.position?.x || 0) - (actor.position?.x || 0);
-                    const dy = (target.position?.y || 0) - (actor.position?.y || 0);
+                    const dx = (target!.position?.x || 0) - (actor.position?.x || 0);
+                    const dy = (target!.position?.y || 0) - (actor.position?.y || 0);
                     const length = Math.sqrt(dx * dx + dy * dy);
 
                     if (length > 0) {
@@ -602,7 +486,7 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
                         };
                         log.push({
                             time, actorId: actor.id, actorName: actor.name, action: 'move', targetPosition: actor.position,
-                            message: `${actor.name} moves towards ${target.name}.`
+                            message: `${actor.name} moves towards ${target!.name}.`
                         });
                         actor.recoveryTime = 10;
                         actionTaken = true;
@@ -657,4 +541,154 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
         survivorsA,
         survivorsB
     };
+}
+
+function resolveWeaponShot(actor: Trooper, target: Trooper, weapon: Weapon, context: BattleContext) {
+    const { log, allTroopers, time } = context;
+
+    const vX = (target.position?.x || 0) - (actor.position?.x || 0);
+    const vY = (target.position?.y || 0) - (actor.position?.y || 0);
+    const distToTarget = Math.sqrt(vX * vX + vY * vY);
+    const dirX = distToTarget > 0 ? vX / distToTarget : 0;
+    const dirY = distToTarget > 0 ? vY / distToTarget : 0;
+
+    const weaponAccuracy = (weapon as any).aim || 100;
+    const baseAim = actor.attributes.aim;
+    let aimPenalty = 0;
+    const targetPart = actor.tactics?.targetPart || 'any';
+    if (targetPart === 'head' || targetPart === 'heart') aimPenalty = 25;
+    else if (targetPart === 'arm' || targetPart === 'leg') aimPenalty = 10;
+
+    const finalHitChance = ((baseAim - aimPenalty) * (weaponAccuracy / 100)) - target.attributes.dodge;
+
+    // BALLISTICS SIMULATION
+    let actualTarget = target;
+    let obstruction: Trooper | null = null;
+    let isObstructionHit = false;
+
+    const potentialObstacles = allTroopers.filter(a => a.id !== actor.id && !a.isDead);
+    let minObstacleDist = distToTarget;
+
+    for (const obs of potentialObstacles) {
+        if (obs.id === target.id) continue;
+
+        const ox = (obs.position?.x || 0) - (actor.position?.x || 0);
+        const oy = (obs.position?.y || 0) - (actor.position?.y || 0);
+        const oDot = ox * dirX + oy * dirY;
+
+        if (oDot > 0 && oDot < minObstacleDist) { // Before target
+            const oPerpX = ox - oDot * dirX;
+            const oPerpY = oy - oDot * dirY;
+            const oDistFromLine = Math.sqrt(oPerpX * oPerpX + oPerpY * oPerpY);
+
+            if (oDistFromLine < 20) { // Hitbox
+                minObstacleDist = oDot;
+                obstruction = obs;
+            }
+        }
+    }
+
+    if (obstruction) {
+        actualTarget = obstruction;
+        isObstructionHit = true;
+    }
+
+    const roll = Math.random() * 100;
+    let isHit = roll <= finalHitChance; // Fixed hitChance variable name usage
+    if (isObstructionHit) isHit = true;
+    const isCrit = Math.random() * 100 <= ((weapon as any).crit || 0) + (actor.attributes.critChance || 0);
+
+    const weaponArea = (weapon as any).area || 0;
+    const weaponStun = (weapon as any).stun || 0;
+
+    if (weaponArea > 0) {
+        // --- AOE EXPLOSION LOGIC ---
+        let impactX = actualTarget.position!.x;
+        let impactY = actualTarget.position!.y;
+        const blastRadius = weaponArea;
+
+        if (isHit) {
+            let primaryDamage = ((weapon as any).damage || 5) + (actor.attributes.damage || 0);
+            if (isCrit) primaryDamage *= 1.5;
+            primaryDamage = Math.max(1, Math.floor(primaryDamage - (actualTarget.attributes.armor || 0)));
+            actualTarget.attributes.hp = Math.max(0, actualTarget.attributes.hp - primaryDamage);
+            if (actualTarget.attributes.hp === 0) actualTarget.isDead = true;
+
+            log.push({
+                time, actorId: actor.id, actorName: actor.name, targetId: actualTarget.id, targetName: actualTarget.name,
+                action: 'attack', damage: primaryDamage, isCrit, message: `${actor.name} hits ${actualTarget.name} with explosion for ${primaryDamage}`,
+                data: { weaponId: weapon.id }
+            });
+        } else {
+            // Miss Logic: Explode somewhere else
+            const missDistance = 50 + Math.random() * 150;
+            const missAngle = Math.atan2(dirY, dirX) + (Math.random() - 0.5);
+            impactX = actualTarget.position!.x + Math.cos(missAngle) * missDistance;
+            impactY = actualTarget.position!.y + Math.sin(missAngle) * missDistance;
+            impactX = Math.max(0, Math.min(1000, impactX));
+            impactY = Math.max(0, Math.min(400, impactY));
+
+            log.push({
+                time, actorId: actor.id, actorName: actor.name,
+                action: 'attack', isMiss: true, message: `${actor.name} misses! Shot lands nearby.`,
+                targetPosition: { x: impactX, y: impactY },
+                data: { weaponId: weapon.id }
+            });
+        }
+
+        // Area Damage & Knockback
+        const affectedUnits = allTroopers.filter(t => !t.isDead && t.id !== actor.id);
+        affectedUnits.forEach(unit => {
+            const distToImpact = Math.sqrt(Math.pow((unit.position!.x) - impactX, 2) + Math.pow((unit.position!.y) - impactY, 2));
+            if (distToImpact <= blastRadius) {
+                const isPrimaryHit = (unit.id === actualTarget.id && isHit);
+                if (!isPrimaryHit) {
+                    let splashDamage = ((weapon as any).damage || 5) + (actor.attributes.damage || 0);
+                    const falloff = 0.5 + 0.5 * (1 - (distToImpact / blastRadius));
+                    splashDamage = Math.floor(splashDamage * falloff);
+                    splashDamage = Math.max(0, splashDamage - (unit.attributes.armor || 0));
+
+                    if (splashDamage > 0) {
+                        unit.attributes.hp = Math.max(0, unit.attributes.hp - splashDamage);
+                        if (unit.attributes.hp === 0) unit.isDead = true;
+                        log.push({
+                            time, actorId: actor.id, actorName: actor.name, targetId: unit.id, targetName: unit.name,
+                            action: 'attack', damage: splashDamage, message: `${unit.name} caught in blast (${splashDamage} dmg).`
+                        });
+                    }
+                }
+                if (weaponStun > 0) {
+                    const distFactor = distToImpact > 1 ? (1 - (distToImpact / blastRadius)) : 1;
+                    const pushForce = weaponStun * distFactor;
+                    let angle = (distToImpact > 1) ? Math.atan2((unit.position!.y) - impactY, (unit.position!.x) - impactX) : Math.random() * Math.PI * 2;
+                    unit.position!.x = Math.max(0, Math.min(1000, unit.position!.x + Math.cos(angle) * pushForce));
+                    unit.position!.y = Math.max(0, Math.min(400, unit.position!.y + Math.sin(angle) * pushForce));
+                }
+            }
+        });
+
+    } else {
+        // Standard Single Target
+        if (isHit) {
+            let damage = ((weapon as any).damage || 5) + (actor.attributes.damage || 0);
+            if (isCrit) damage *= 1.5;
+            damage = Math.max(1, Math.floor(damage - (actualTarget.attributes.armor || 0)));
+            actualTarget.attributes.hp = Math.max(0, actualTarget.attributes.hp - damage);
+            if (actualTarget.attributes.hp === 0) actualTarget.isDead = true;
+            log.push({
+                time, actorId: actor.id, actorName: actor.name, targetId: actualTarget.id, targetName: actualTarget.name,
+                action: 'attack', damage, isCrit, message: `${actor.name} hits ${actualTarget.name}${isObstructionHit ? ' (OBSTRUCTION)' : ''} for ${damage}`,
+                data: { weaponId: weapon.id }
+            });
+        } else {
+            const missX = (target.position?.x || 0) + dirX * 200;
+            const missY = (target.position?.y || 0) + dirY * 200;
+            log.push({
+                time, actorId: actor.id, actorName: actor.name, targetId: target.id, targetName: target.name,
+                action: 'attack', isMiss: true, message: `${actor.name} misses ${target.name}.`,
+                targetPosition: { x: missX, y: missY },
+                data: { weaponId: weapon.id }
+            });
+        }
+    }
 }

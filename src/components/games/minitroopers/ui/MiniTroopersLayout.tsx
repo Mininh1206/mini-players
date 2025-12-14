@@ -8,7 +8,7 @@ import RecruitmentCenter from './RecruitmentCenter';
 import type { Trooper, BattleResult, Player, BattleHistoryEntry } from '@/logic/minitroopers/types';
 import { useTranslation } from '@/logic/minitroopers/i18n';
 import { simulateBattle, calculateSquadPower } from '@/logic/minitroopers/combat';
-import MiniTroopersGame from '@/components/games/minitroopers/MiniTroopersGame';
+import BattleSimulatorView from './BattleSimulatorView';
 import { saveGame, loadGame } from '@/logic/minitroopers/storage';
 import { generateRandomTrooper, generateRat, generateSpecificTrooper, recalculateTrooperHp } from '@/logic/minitroopers/generators';
 import { getRandomSkill, getSkillsByLevel } from '@/logic/minitroopers/skills';
@@ -333,80 +333,64 @@ const MiniTroopersLayout: React.FC = () => {
     return (
         <div className="flex flex-col lg:flex-row min-h-[800px] bg-gray-900 text-white rounded-xl overflow-hidden shadow-2xl border border-gray-800 font-sans w-full max-w-[1600px] mx-auto">
             {/* Sidebar */}
-            <div className="w-full lg:w-72 bg-gray-950 flex flex-col border-r border-gray-800 shrink-0">
-                <div className="p-6 border-b border-gray-800 flex justify-between items-center">
-                    {/* Title and Language Switcher */}
-                    <div>
-                        <h1 className="text-2xl font-black italic tracking-wider text-yellow-500">MINI TROOPERS</h1>
-                        <div className="text-xs text-gray-500 tracking-widest">{player.name}</div>
-                        <div className="text-yellow-400 font-bold mt-1">{player.gold} 💰</div>
-                        <div className="text-blue-400 font-bold text-xs mt-1">Power: {calculateSquadPower(player.troopers)} ⚡</div>
-                    </div>
-                    <div className="flex gap-1">
-                        <button onClick={() => changeLanguage('en')} className={`text-xs px-1 ${lang === 'en' ? 'text-white font-bold' : 'text-gray-600'}`}>EN</button>
-                        <span className="text-gray-700">|</span>
-                        <button onClick={() => changeLanguage('es')} className={`text-xs px-1 ${lang === 'es' ? 'text-white font-bold' : 'text-gray-600'}`}>ES</button>
-                    </div>
+            <div className="w-80 bg-gray-950 flex flex-col border-r border-gray-800 shrink-0">
+                {/* Profile / Header */}
+                <div className="p-4 border-b border-gray-900 bg-gray-950">
+                     <h1 className="text-xl font-black text-gray-200 tracking-tighter uppercase italic">MINI TROOPERS</h1>
+                     <div className="flex justify-between items-center mt-2">
+                        <div className="text-yellow-500 font-bold text-sm">💰 {player.gold}</div>
+                        <button onClick={handleResetData} className="text-[10px] text-red-900 hover:text-red-500 uppercase font-bold">Res</button>
+                     </div>
                 </div>
-                
-                {/* Navigation */}
-                <nav className="flex flex-col p-4 gap-2">
-                    <button 
-                        onClick={() => setCurrentView('HQ')}
-                        className={`px-4 py-3 rounded-lg text-left font-bold transition flex items-center gap-3 ${currentView === 'HQ' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-900 hover:text-white'}`}
-                    >
-                        <span className="text-xl">🏠</span> {t('hq')}
-                    </button>
-                    <button 
-                        onClick={() => setCurrentView('BATTLE')}
-                        className={`px-4 py-3 rounded-lg text-left font-bold transition flex items-center gap-3 ${currentView === 'BATTLE' || currentView === 'SIMULATION' ? 'bg-red-600 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-900 hover:text-white'}`}
-                    >
-                        <span className="text-xl">⚔️</span> {t('battle')}
-                    </button>
-                    <button 
-                        onClick={() => setCurrentView('HISTORY')}
-                        className={`px-4 py-3 rounded-lg text-left font-bold transition flex items-center gap-3 ${currentView === 'HISTORY' ? 'bg-gray-700 text-white shadow-lg' : 'text-gray-400 hover:bg-gray-900 hover:text-white'}`}
-                    >
-                        <span className="text-xl">📜</span> {t('history')}
-                    </button>
-                </nav>
 
-                {/* Trooper List */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                    <div className="text-xs font-bold text-gray-500 px-2 uppercase tracking-wider">{t('my_squad')}</div>
-                    {player.troopers.map(trooper => (
-                        <TrooperCard 
-                            key={trooper.id} 
-                            trooper={trooper} 
-                            isSelected={selectedTrooperId === trooper.id && currentView === 'HQ'}
-                            onClick={() => {
-                                setSelectedTrooperId(trooper.id);
-                                setCurrentView('HQ');
-                            }}
-                            t={t}
-                        />
+                {/* Navigation Tabs */}
+                <div className="flex border-b border-gray-800">
+                    {['HQ', 'BATTLE', 'HISTORY'].map((view) => (
+                        <button
+                            key={view}
+                            onClick={() => setCurrentView(view as any)}
+                            className={`flex-1 py-3 text-xs font-bold transition-colors ${
+                                currentView === view || (view === 'BATTLE' && currentView === 'SIMULATION')
+                                    ? 'bg-gray-800 text-white border-b-2 border-blue-500'
+                                    : 'text-gray-500 hover:text-gray-300 hover:bg-gray-900'
+                            }`}
+                        >
+                            {view === 'HQ' ? 'BASE' : view}
+                        </button>
                     ))}
-                    <button 
-                        onClick={handleEnterRecruit}
-                        className="w-full py-3 border-2 border-dashed border-gray-800 text-gray-500 rounded-lg hover:border-gray-600 hover:text-gray-300 transition text-sm font-bold"
-                    >
-                        {t('recruit_trooper')}
-                    </button>
                 </div>
 
-                {/* Reset Data Button */}
-                <div className="p-4 border-t border-gray-800">
-                    <button 
-                        onClick={handleResetData}
-                        className="w-full py-2 bg-red-900/50 text-red-400 hover:bg-red-900 hover:text-white rounded transition text-xs font-bold uppercase tracking-widest"
-                    >
-                        {t('reset_data') || 'Reset Data'}
-                    </button>
+                {/* Squad List (Always Visible) */}
+                <div className="flex-1 overflow-y-auto p-3">
+                    <div className="flex justify-between items-end mb-2 px-1">
+                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">MY SQUAD ({player.troopers.length})</span>
+                         <button 
+                            onClick={handleEnterRecruit} 
+                            className="text-[10px] bg-blue-900/30 text-blue-400 hover:text-blue-300 px-2 py-0.5 cursor-pointer rounded border border-blue-900/50"
+                        >
+                            + RECRUIT
+                        </button>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 gap-2">
+                        {player.troopers.map(trooper => (
+                            <TrooperCard 
+                                key={trooper.id} 
+                                trooper={trooper} 
+                                isSelected={selectedTrooperId === trooper.id && currentView === 'HQ'}
+                                onClick={() => {
+                                    setSelectedTrooperId(trooper.id);
+                                    if(currentView !== 'HQ') setCurrentView('HQ');
+                                }}
+                                t={t}
+                            />
+                        ))}
+                    </div>
                 </div>
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 bg-gray-900 p-6 lg:p-8 overflow-y-auto relative flex flex-col">
+            <div className={`flex-1 bg-gray-900 p-6 lg:p-8 relative flex flex-col ${currentView === 'SIMULATION' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
                  {/* Background Pattern */}
                 <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#4b5563 1px, transparent 1px)', backgroundSize: '24px 24px' }}></div>
 
@@ -453,39 +437,19 @@ const MiniTroopersLayout: React.FC = () => {
                     )}
 
                     {currentView === 'SIMULATION' && battleResult && (
-                        <div className="flex flex-col gap-4 h-full">
-                            <div className="flex justify-between items-center bg-gray-800 p-4 rounded-lg border border-gray-700">
-                                <h2 className="text-2xl font-bold text-white">{t('battle_simulation') || 'Battle Simulation'}</h2>
-                                <div className="flex gap-4 items-center">
-                                    <div className={`px-4 py-1 rounded font-bold ${battleResult.winner === 'A' ? 'bg-green-900 text-green-100' : 'bg-red-900 text-red-100'}`}>
-                                        {battleResult.winner === 'A' ? (t('victory') || 'VICTORY') : (t('defeat') || 'DEFEAT')}
-                                    </div>
-                                    <button 
-                                        onClick={() => setCurrentView('BATTLE')}
-                                        className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded text-white font-bold transition"
-                                    >
-                                        {t('back_to_arena') || 'Back to Arena'}
-                                    </button>
-                                </div>
-                            </div>
-                            
-                            <div className="flex-1 bg-black rounded-xl overflow-hidden border border-gray-800 shadow-2xl relative">
-                                <MiniTroopersGame 
-                                    battleResult={battleResult}
-                                    mySquad={currentView === 'SIMULATION' && battleResult ? (battleResult as any).mySquadSnapshot || player.troopers : player.troopers}
-                                    opponentSquad={currentView === 'SIMULATION' && battleResult ? (battleResult as any).opponentSquadSnapshot || currentOpponent : currentOpponent} 
-                                />
-                            </div>
-
-                            {/* Mini Log */}
-                            <div className="h-32 bg-gray-950 rounded-lg p-4 overflow-y-auto font-mono text-xs text-gray-400 border border-gray-800">
-                                {battleResult.log.map((entry, idx) => (
-                                    <div key={idx} className="mb-1 border-b border-gray-900 pb-1 last:border-0">
-                                        <span className="text-yellow-600 mr-2">[{entry.time}]</span>
-                                        <span>{entry.message}</span>
-                                    </div>
-                                ))}
-                            </div>
+                        <div className="flex-1 min-h-0 flex flex-col">
+                             <div className="h-16 bg-gray-950/50 border-b border-gray-800 flex items-center px-6 mb-4 rounded-xl shrink-0">
+                                <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
+                                    <span className="text-red-500">⚔️</span> {t('battle_simulation') || 'BATTLE SIMULATION'}
+                                </h2>
+                             </div>
+                             <BattleSimulatorView
+                                 battleResult={battleResult}
+                                 mySquad={currentView === 'SIMULATION' && battleResult ? (battleResult as any).mySquadSnapshot || player.troopers : player.troopers}
+                                 opponentSquad={currentView === 'SIMULATION' && battleResult ? (battleResult as any).opponentSquadSnapshot || currentOpponent : currentOpponent}
+                                 onClose={() => setCurrentView('BATTLE')}
+                                 backLabel="Back to Arena"
+                             />
                         </div>
                     )}
 

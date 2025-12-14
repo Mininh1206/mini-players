@@ -6,6 +6,7 @@ import SkillTooltip from './SkillTooltip';
 import { Weapon, Skill as SkillClass } from '@/logic/minitroopers/classes/Skill';
 import { useTranslation } from '@/logic/minitroopers/i18n';
 import MiniTroopersGame from '../MiniTroopersGame';
+import BattleSimulatorView from './BattleSimulatorView';
 
 // Helper to generate IDs without external dependency
 const generateId = () => Math.random().toString(36).substr(2, 9);
@@ -276,7 +277,7 @@ export const Sandbox: React.FC = () => {
     // --- Renderers ---
 
     return (
-        <div className="flex h-[800px] bg-gray-950 text-white overflow-hidden font-sans rounded-xl border border-gray-800 shadow-2xl">
+        <div className="flex w-[1200px] h-[700px] bg-gray-950 text-white overflow-hidden font-sans rounded-xl border border-gray-800 shadow-2xl">
             {/* LEFT SIDEBAR: Scenarios & History */}
             <div className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col">
                 <div className="p-4 border-b border-gray-800 bg-gray-950">
@@ -415,27 +416,13 @@ export const Sandbox: React.FC = () => {
                         </div>
                     ) : (
                         // SIMULATION VIEW
-                        <div className="h-full flex flex-col p-4">
-                            <button onClick={() => setResult(null)} className="absolute top-4 right-4 z-50 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded text-white font-bold shadow-lg">Back to Editor</button>
-                             <div className="flex-1 rounded-xl overflow-hidden border border-gray-700 shadow-2xl relative mb-4">
-                                 <MiniTroopersGame 
-                                    battleResult={result}
-                                    mySquad={initialSquads?.mySquad || []}
-                                    opponentSquad={initialSquads?.opponentSquad || []}
-                                />
-                             </div>
-                             <div className="h-48 bg-gray-900 rounded-xl p-4 overflow-y-auto font-mono text-xs border border-gray-800">
-                                {result.log.map((entry, idx) => (
-                                    <div key={idx} className="mb-1 border-b border-gray-800 pb-1 flex gap-2">
-                                         <span className="text-yellow-600">[{entry.time.toFixed(1)}s]</span>
-                                         <span className={entry.actorId.includes('battle') && initialSquads?.mySquad.find(s => s.id === entry.actorId) ? 'text-green-400' : 'text-red-400'}>
-                                            {entry.actorName}
-                                         </span>
-                                         <span className="text-gray-300">{entry.message}</span>
-                                    </div>
-                                ))}
-                             </div>
-                        </div>
+                        <BattleSimulatorView
+                            battleResult={result}
+                            mySquad={initialSquads?.mySquad || []}
+                            opponentSquad={initialSquads?.opponentSquad || []}
+                            onClose={() => setResult(null)}
+                            backLabel="Back to Editor"
+                        />
                     )}
                 </div>
             </div>

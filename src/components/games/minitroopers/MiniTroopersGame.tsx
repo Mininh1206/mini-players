@@ -10,9 +10,10 @@ interface MiniTroopersGameProps {
     battleResult?: BattleResult | null;
     mySquad?: Trooper[];
     opponentSquad?: Trooper[];
+    translations?: Record<string, string>;
 }
 
-const MiniTroopersGame: React.FC<MiniTroopersGameProps> = ({ battleResult, mySquad, opponentSquad }) => {
+const MiniTroopersGame: React.FC<MiniTroopersGameProps> = ({ battleResult, mySquad, opponentSquad, translations }) => {
     const gameContainer = useRef<HTMLDivElement>(null);
     const gameInstance = useRef<Phaser.Game | null>(null);
     const [inspectedTrooper, setInspectedTrooper] = React.useState<Trooper | null>(null);
@@ -23,8 +24,12 @@ const MiniTroopersGame: React.FC<MiniTroopersGameProps> = ({ battleResult, mySqu
         if (typeof window !== 'undefined' && gameContainer.current && !gameInstance.current) {
             const config: Phaser.Types.Core.GameConfig = {
                 type: Phaser.AUTO,
-                width: 800,
-                height: 600,
+                scale: {
+                    mode: Phaser.Scale.RESIZE,
+                    width: '100%',
+                    height: '100%',
+                    autoCenter: Phaser.Scale.NO_CENTER
+                },
                 parent: gameContainer.current,
                 scene: [BootScene, BattleScene],
                 physics: {
@@ -53,7 +58,7 @@ const MiniTroopersGame: React.FC<MiniTroopersGameProps> = ({ battleResult, mySqu
             const scene = gameInstance.current.scene.getScene('BattleScene') as BattleScene;
             
             const startScene = (s: BattleScene) => {
-                s.scene.restart({ result: battleResult, teamA: mySquad, teamB: opponentSquad });
+                s.scene.restart({ result: battleResult, teamA: mySquad, teamB: opponentSquad, translations });
                 // Setup callbacks
                 s.onTrooperClick = (trooperId: string) => {
                     // Try to get live data from scene
@@ -68,6 +73,11 @@ const MiniTroopersGame: React.FC<MiniTroopersGameProps> = ({ battleResult, mySqu
                         s.pause();
                     }
                 };
+                
+                // Sync resume from scene (e.g. clicking background)
+                s.onResume = () => {
+                    setInspectedTrooper(null);
+                };
             };
 
             if (scene) {
@@ -79,7 +89,7 @@ const MiniTroopersGame: React.FC<MiniTroopersGameProps> = ({ battleResult, mySqu
                 });
             }
         }
-    }, [battleResult, mySquad, opponentSquad]);
+    }, [battleResult, mySquad, opponentSquad, translations]);
 
     const handleCloseInspector = () => {
         setInspectedTrooper(null);
@@ -90,8 +100,8 @@ const MiniTroopersGame: React.FC<MiniTroopersGameProps> = ({ battleResult, mySqu
     };
 
     return (
-        <div className="flex flex-col w-full h-full items-center justify-center bg-black rounded-xl overflow-hidden shadow-2xl border border-gray-800 relative">
-            <div ref={gameContainer} id="phaser-game" className="rounded-lg overflow-hidden" />
+        <div className="flex flex-col w-full h-full bg-black rounded-xl overflow-hidden shadow-2xl border border-gray-800 relative">
+            <div ref={gameContainer} id="phaser-game" className="w-full h-full overflow-hidden" />
             
             {inspectedTrooper && (
                 <BattleInspector 
@@ -100,18 +110,14 @@ const MiniTroopersGame: React.FC<MiniTroopersGameProps> = ({ battleResult, mySqu
                     t={t}
                 />
             )}
-            {inspectedTrooper && (
-                <BattleInspector 
-                    trooper={inspectedTrooper} 
-                    onClose={handleCloseInspector}
-                    t={t}
-                />
-            )}
+
 
             {/* Speed Control Button */}
             <button 
                 className="absolute top-4 right-4 bg-gray-800 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded border border-gray-600 z-10"
-                onClick={() => {
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                     e.stopPropagation(); // Also stop click just in case
                      const scene = gameInstance.current?.scene.getScene('BattleScene') as BattleScene;
                      if (scene) {
                          const currentSpeed = (scene as any).speedMultiplier || 1;

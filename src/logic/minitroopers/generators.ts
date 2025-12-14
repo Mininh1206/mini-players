@@ -7,17 +7,17 @@ const NAMES = ['Sgt. Johnson', 'Pvt. Ryan', 'Cpl. Hicks', 'Lt. Ripley', 'Maj. Ku
 const RAT_NAMES = ['Rat', 'Giant Rat', 'Sewer Rat', 'Plague Rat', 'Mutant Rat'];
 
 const BASE_ATTRIBUTES: Record<TrooperClass, TrooperAttributes> = {
-    'Recruit': { hp: 10, maxHp: 10, initiative: 10, range: 1, damage: 10, aim: 80, dodge: 10, armor: 0, critChance: 5, speed: 100 },
-    'Soldier': { hp: 10, maxHp: 10, initiative: 10, range: 1, damage: 10, aim: 80, dodge: 10, armor: 1, critChance: 5, speed: 100 },
-    'Sniper': { hp: 10, maxHp: 10, initiative: 15, range: 10, damage: 20, aim: 90, dodge: 5, armor: 0, critChance: 20, speed: 100 },
-    'Doctor': { hp: 10, maxHp: 10, initiative: 8, range: 2, damage: 5, aim: 70, dodge: 15, armor: 0, critChance: 5, speed: 100 },
-    'Pilot': { hp: 10, maxHp: 10, initiative: 12, range: 1, damage: 8, aim: 75, dodge: 20, armor: 0, critChance: 10, speed: 100 },
-    'Commando': { hp: 10, maxHp: 10, initiative: 12, range: 1, damage: 12, aim: 85, dodge: 10, armor: 2, critChance: 10, speed: 120 },
-    'Scout': { hp: 10, maxHp: 10, initiative: 20, range: 1, damage: 7, aim: 85, dodge: 30, armor: 0, critChance: 15, speed: 130 },
-    'Spy': { hp: 10, maxHp: 10, initiative: 30, range: 1, damage: 10, aim: 90, dodge: 20, armor: 0, critChance: 25, speed: 110 },
-    'Saboteur': { hp: 10, maxHp: 10, initiative: 15, range: 1, damage: 10, aim: 80, dodge: 15, armor: 0, critChance: 10, speed: 105 },
-    'Comms Officer': { hp: 10, maxHp: 10, initiative: 10, range: 1, damage: 8, aim: 75, dodge: 10, armor: 0, critChance: 5, speed: 100 },
-    'Rat': { hp: 20, maxHp: 20, initiative: 20, range: 1, damage: 5, aim: 80, dodge: 25, armor: 0, critChance: 10, speed: 140 }
+    'Recruit': { hp: 10, maxHp: 10, initiative: 10, range: 1, damage: 0, aim: 80, dodge: 10, armor: 0, critChance: 5, speed: 100 },
+    'Soldier': { hp: 10, maxHp: 10, initiative: 10, range: 1, damage: 0, aim: 80, dodge: 10, armor: 1, critChance: 5, speed: 100 },
+    'Sniper': { hp: 10, maxHp: 10, initiative: 15, range: 10, damage: 0, aim: 90, dodge: 5, armor: 0, critChance: 20, speed: 100 },
+    'Doctor': { hp: 10, maxHp: 10, initiative: 8, range: 2, damage: 0, aim: 70, dodge: 15, armor: 0, critChance: 5, speed: 100 },
+    'Pilot': { hp: 10, maxHp: 10, initiative: 12, range: 1, damage: 0, aim: 75, dodge: 20, armor: 0, critChance: 10, speed: 100 },
+    'Commando': { hp: 10, maxHp: 10, initiative: 12, range: 1, damage: 0, aim: 85, dodge: 10, armor: 2, critChance: 10, speed: 120 },
+    'Scout': { hp: 10, maxHp: 10, initiative: 20, range: 1, damage: 0, aim: 85, dodge: 30, armor: 0, critChance: 15, speed: 130 },
+    'Spy': { hp: 10, maxHp: 10, initiative: 30, range: 1, damage: 0, aim: 90, dodge: 20, armor: 0, critChance: 25, speed: 110 },
+    'Saboteur': { hp: 10, maxHp: 10, initiative: 15, range: 1, damage: 0, aim: 80, dodge: 15, armor: 0, critChance: 10, speed: 105 },
+    'Comms Officer': { hp: 10, maxHp: 10, initiative: 10, range: 1, damage: 0, aim: 75, dodge: 10, armor: 0, critChance: 5, speed: 100 },
+    'Rat': { hp: 20, maxHp: 20, initiative: 20, range: 1, damage: 0, aim: 80, dodge: 25, armor: 0, critChance: 10, speed: 140 }
 };
 
 export const generateRandomTrooper = (targetLevel: number = 1): Trooper => {
@@ -121,7 +121,7 @@ export const generateRat = (level: number = 1): Trooper => {
     // Scale Rat stats specifically
     baseStats.maxHp += (level - 1) * 5;
     baseStats.hp = baseStats.maxHp;
-    baseStats.damage += (level - 1) * 2;
+    baseStats.damage += (level - 1) * 1;
 
     const skills: any[] = []; // Rats don't use standard weapons/skills yet, simple melee
     // Potentially add "Bite" weapon or similar if strictly needed by combat system, 

@@ -37,11 +37,14 @@ const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrad
                         <button
                             key={idx}
                             onClick={() => onSelectSkill && onSelectSkill(skill)}
-                            className="bg-gray-900 p-8 rounded-xl border-2 border-gray-700 hover:border-blue-500 hover:bg-gray-800 transition group flex flex-col items-center gap-4"
+                            className="bg-gray-900 p-8 rounded-xl border-2 border-gray-700 hover:border-blue-500 hover:bg-gray-800 transition group flex flex-col items-center gap-4 relative"
                         >
                             <div className="text-6xl group-hover:scale-110 transition-transform">{skill.icon}</div>
                             <h3 className="text-2xl font-bold text-white">{skill.name}</h3>
                             <p className="text-gray-400">{skill.description}</p>
+                            
+                            {/* Context Menu on Hover */}
+                            <SkillTooltip skill={skill} t={t} />
                         </button>
                     ))}
                 </div>

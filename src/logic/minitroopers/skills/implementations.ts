@@ -808,7 +808,7 @@ const Spy: SkillImplementation = {
         const sourceList = originalTeam === 'A' ? context.deployedA : context.deployedB;
         const targetList = originalTeam === 'A' ? context.deployedB : context.deployedA;
         
-        const index = sourceList.findIndex(t => t.id === trooper.id);
+        const index = sourceList.findIndex(t => t === trooper);
         if (index !== -1) {
             sourceList.splice(index, 1);
             targetList.push(trooper);

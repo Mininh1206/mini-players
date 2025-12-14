@@ -9,11 +9,25 @@ export class BattleScene extends Phaser.Scene {
     private isPlayingTurn: boolean = false;
     private isPaused: boolean = false;
     public onTrooperClick?: (trooperId: string) => void;
+    public onResume?: () => void;
+    private borderTop: Phaser.GameObjects.Rectangle | null = null;
+    private borderBottom: Phaser.GameObjects.Rectangle | null = null;
+    private colorMatrix: Phaser.FX.ColorMatrix | null = null;
 
     // All troopers available (for looking up data when spawning)
     private allTroopersMap: Map<string, Trooper> = new Map();
     private battleTime: number = 0;
     private processedLogs: Set<number> = new Set(); // Indicies of processed logs
+    private translations: Record<string, string> = {};
+    private bgImage: Phaser.GameObjects.Image | null = null;
+    
+    // UI - Reserves
+    private reserveTextA: Phaser.GameObjects.Text | null = null;
+    private reserveTextB: Phaser.GameObjects.Text | null = null;
+    private totalCountA: number = 0;
+    private totalCountB: number = 0;
+    private deployedCountA: number = 0;
+    private deployedCountB: number = 0;
 
     constructor() {
         super('BattleScene');
@@ -21,8 +35,9 @@ export class BattleScene extends Phaser.Scene {
         this.battleResult = { winner: '', log: [] } as any; 
     }
 
-    init(data: { result: BattleResult, teamA: Trooper[], teamB: Trooper[] }) {
+    init(data: { result: BattleResult, teamA: Trooper[], teamB: Trooper[], translations?: Record<string, string> }) {
         this.battleResult = data.result || { winner: '', log: [] };
+        this.translations = data.translations || {};
         
         // Map all troopers for easy access
         this.allTroopersMap.clear();
@@ -33,37 +48,79 @@ export class BattleScene extends Phaser.Scene {
         this.currentTurnIndex = 0;
         this.battleTime = 0;
         this.processedLogs.clear();
+        this.currentTurnIndex = 0;
+        this.battleTime = 0;
+        this.processedLogs.clear();
         this.isPlayingTurn = false;
+
+        this.totalCountA = data.teamA?.length || 0;
+        this.totalCountB = data.teamB?.length || 0;
+        this.deployedCountA = 0;
+        this.deployedCountB = 0;
     }
 
     private speedMultiplier: number = 1;
 
     create() {
-        // Background for input
-        const bg = this.add.rectangle(400, 300, 800, 600, 0x000000, 0).setInteractive();
+        // Calculate center offsets
+        // Logic area is 800x600.
+        // We want (400, 300) to be at the center of the viewport (scale.width/2, scale.height/2).
+        // Actually, easiest way is to use Camera Center.
+        this.cameras.main.centerOn(400, 300);
+
+        // Background for input - Make it huge to cover resizing
+        const bg = this.add.rectangle(400, 300, 4000, 4000, 0x000000, 0).setInteractive();
         bg.on('pointerdown', () => {
              if (this.isPaused) {
                  this.resume();
-                 this.battleText?.setText(`RESUMED`);
-                 this.time.delayedCall(500, () => this.updateBattleText(Math.floor(this.battleTime)));
              } else {
                  this.pause();
-                 this.battleText?.setText(`PAUSED`);
              }
         });
 
-        this.add.image(400, 300, 'sky').setAlpha(0.5);
+        // Visual Background (Sky) - make it dynamic
+        this.bgImage = this.add.image(400, 300, 'sky').setAlpha(0.5).setScrollFactor(0);
         
-        this.battleText = this.add.text(400, 50, 'Battle Start!', {
+        // Battle Text - Anchor to Top Center of Viewport
+        this.battleText = this.add.text(400, -250, this.translations['battle_start'] || 'Battle Start!', { // Relative to center
             fontSize: '24px',
             color: '#ffffff',
             stroke: '#000000',
             strokeThickness: 4,
             align: 'center'
-        }).setOrigin(0.5);
+        }).setOrigin(0.5).setScrollFactor(0); // ScrollFactor 0 means it sticks to camera? 
+        // No, centerOn changes world view. ScrollFactor 0 locks to camera, 
+        // coordinates become 0,0 at top-left of screen.
+        // So allow scroll, just position relative to 400,300.
+        
+        // Actually, sticking to camera is better for UI.
+        // Actually, sticking to camera is better for UI.
+        this.battleText.setScrollFactor(0);
+
+        // Reserve Counters
+        const style = { fontSize: '18px', color: '#ffffff', stroke: '#000000', strokeThickness: 3, fontStyle: 'bold' };
+        this.reserveTextA = this.add.text(20, 20, `Reserves: ${this.totalCountA}`, style).setScrollFactor(0).setOrigin(0, 0);
+        this.reserveTextB = this.add.text(780, 20, `Reserves: ${this.totalCountB}`, style).setScrollFactor(0).setOrigin(1, 0);
+
+        // Listen for resize
+        this.scale.on('resize', this.resize, this);
 
         // Clear any existing sprites
         this.troopers.clear();
+
+        // Create Cinematic Borders
+        // We want them to cover from edges towards center.
+        // Use scrollFactor 0 to lock to camera. 
+        // Initially invisible/off-screen.
+        
+        // Initialize graphics
+        // Initialize graphics
+        this.borderTop = this.add.rectangle(400, 0, 4000, 200, 0x000000).setDepth(1000).setOrigin(0.5, 1);
+        this.borderBottom = this.add.rectangle(400, 600, 4000, 200, 0x000000).setDepth(1000).setOrigin(0.5, 0);
+
+        // Initial Resize to fit container
+        this.scale.on('resize', this.resize, this);
+        this.resize({ width: this.scale.width, height: this.scale.height });
 
         // Start clock
         // Simulation tick is discrete, but we want smooth playback. 
@@ -75,6 +132,47 @@ export class BattleScene extends Phaser.Scene {
     setSpeed(multiplier: number) {
         this.speedMultiplier = multiplier;
     }
+
+    resize(gameSize?: { width: number, height: number }) {
+        const width = gameSize ? gameSize.width : this.scale.width;
+        const height = gameSize ? gameSize.height : this.scale.height;
+
+        this.cameras.main.setViewport(0, 0, width, height);
+        
+        // Logical size is 800x600.
+        // ZOOM to fit keeping aspect ratio.
+        const scaleX = width / 800;
+        const scaleY = height / 600;
+        const zoom = Math.min(scaleX, scaleY);
+        
+        this.cameras.main.setZoom(zoom);
+        this.cameras.main.centerOn(400, 300);
+
+        // Update elements that need to stay relative to logical coordinates or screen
+        if (this.battleText) {
+             this.battleText.setPosition(width / 2, 60);
+        }
+
+        // Handle Background "Cover" scaling if present
+        if (this.bgImage) {
+            this.bgImage.setPosition(width / 2, height / 2); // Center of screen
+            
+            // Cover mode
+            const imgWidth = this.bgImage.width;
+            const imgHeight = this.bgImage.height;
+            if (imgWidth > 0 && imgHeight > 0) {
+                 const scaleX = width / imgWidth;
+                 const scaleY = height / imgHeight;
+                 const scale = Math.max(scaleX, scaleY);
+                 this.bgImage.setScale(scale);
+            }
+        }
+
+        // Borders should stay at their logical positions (0 and 600)
+    }
+
+    // Removed updateElementsPosition as it's handled by camera zoom now.
+    updateElementsPosition() {}
 
     update(time: number, delta: number) {
         if (this.isPaused) return;
@@ -100,15 +198,20 @@ export class BattleScene extends Phaser.Scene {
         }
         
         if (this.currentTurnIndex >= this.battleResult.log.length) {
-             this.battleText?.setText(`Winner: Team ${this.battleResult.winner === 'A' ? 'PLAYER' : 'ENEMY'}`);
+             const winnerTeam = this.battleResult.winner === 'A' ? (this.translations['winner_player'] || 'PLAYER') : (this.translations['winner_enemy'] || 'ENEMY');
+             const winnerText = (this.translations['winner_team'] || 'Winner: Team {{team}}').replace('{{team}}', winnerTeam);
+             this.battleText?.setText(winnerText);
              this.battleText?.setColor(this.battleResult.winner === 'A' ? '#00ff00' : '#ff0000');
+             this.battleText?.setDepth(1001); // Ensure above borders
         }
     }
 
     updateBattleText(time: number) {
-        // Find recent message
-        // This is tricky with continuous time. Maybe just show time.
-         this.battleText?.setText(`Time: ${time}`);
+         // Find recent message
+         // This is tricky with continuous time. Maybe just show time.
+         const timePrefix = this.translations['time_prefix'] || 'Time: ';
+         this.battleText?.setText(`${timePrefix}${time}`);
+         this.battleText?.setDepth(1001);
     }
 
     // Removed processNextTurn and playBatchAnimations
@@ -177,7 +280,7 @@ export class BattleScene extends Phaser.Scene {
         if (log.action === 'heal') {
             const target = log.targetId ? this.troopers.get(log.targetId) : null;
             if (target && target.scene) {
-                this.showFloatingText(actor.x, actor.y - 50, "HEAL!", '#00ff00');
+                this.showFloatingText(actor.x, actor.y - 50, this.translations['heal_shout'] || "HEAL!", '#00ff00');
                 this.tweens.add({
                     targets: actor,
                     x: target.x,
@@ -247,10 +350,10 @@ export class BattleScene extends Phaser.Scene {
                      onComplete: () => {
                          // Impact at peak of lunge
                          if (log.isMiss) {
-                             this.showFloatingText(targetX, targetY - 20, "MISS", '#888888');
+                             this.showFloatingText(targetX, targetY - 20, this.translations['miss'] || "MISS", '#888888');
                          } else if (target && target.scene) {
                              if (log.damage) this.showFloatingText(target.x, target.y - 50, `-${log.damage}`, '#ff0000');
-                             if (log.isCrit) this.showFloatingText(target.x, target.y - 70, "CRIT!", '#ff8800');
+                             if (log.isCrit) this.showFloatingText(target.x, target.y - 70, this.translations['crit_shout'] || "CRIT!", '#ff8800');
                              this.updateHealth(target, log.damage || 0);
                          }
                          onComplete();
@@ -302,14 +405,14 @@ export class BattleScene extends Phaser.Scene {
                          }
 
                          if (log.isMiss) {
-                             this.showFloatingText(targetX, targetY - 20, "MISS", '#888888');
+                             this.showFloatingText(targetX, targetY - 20, this.translations['miss'] || "MISS", '#888888');
                          } else if (target && target.scene) {
                              // Hit effect
                              if (log.damage) {
                                 this.showFloatingText(target.x, target.y - 50, `-${log.damage}`, '#ff0000');
                              }
                              if (log.isCrit) {
-                                 this.showFloatingText(target.x, target.y - 70, "CRIT!", '#ff8800');
+                                 this.showFloatingText(target.x, target.y - 70, this.translations['crit_shout'] || "CRIT!", '#ff8800');
                              }
                              this.updateHealth(target, log.damage || 0);
                          }
@@ -341,7 +444,7 @@ export class BattleScene extends Phaser.Scene {
         }
 
         if (log.action === 'use_equipment') {
-            this.showFloatingText(actor.x, actor.y - 50, "GRENADE!", '#ff8800');
+            this.showFloatingText(actor.x, actor.y - 50, this.translations['grenade_shout'] || "GRENADE!", '#ff8800');
             
             let targetX = actor.x;
             let targetY = actor.y;
@@ -404,6 +507,17 @@ export class BattleScene extends Phaser.Scene {
             y = 100 + Math.floor(Math.random() * 400);
         }
         
+        // Update Reserve Counts
+        if (isLeft) {
+            this.deployedCountA++;
+            const remaining = Math.max(0, this.totalCountA - this.deployedCountA);
+            this.reserveTextA?.setText(`Reserves: ${remaining}`);
+        } else {
+            this.deployedCountB++;
+            const remaining = Math.max(0, this.totalCountB - this.deployedCountB);
+            this.reserveTextB?.setText(`Reserves: ${remaining}`);
+        }
+
         this.createTrooperSprite(trooper, x, y, isLeft ? 0x00ff00 : 0xff0000, isLeft);
 
         const container = this.troopers.get(trooper.id);
@@ -489,13 +603,73 @@ export class BattleScene extends Phaser.Scene {
     }
 
     pause() {
+        if (this.isPaused) return;
         this.isPaused = true;
         this.tweens.pauseAll();
+        
+        // VISUALS: Grayscale
+        if (this.cameras.main.postFX) {
+            if (!this.colorMatrix) {
+                this.colorMatrix = this.cameras.main.postFX.addColorMatrix();
+            }
+            this.colorMatrix.grayscale(1.0);
+        }
+
+        // VISUALS: Borders
+        if (this.borderTop && this.borderBottom) {
+            // Kill existing tweens to prevent conflict (double click)
+            this.tweens.killTweensOf([this.borderTop, this.borderBottom]);
+
+            // const height = this.scale.height; // Not used for logic coords
+            this.tweens.add({
+                targets: this.borderTop,
+                y: 100, 
+                duration: 500,
+                ease: 'Power2'
+            });
+            this.tweens.add({
+                targets: this.borderBottom,
+                y: 500, // Logical Y
+                duration: 500,
+                ease: 'Power2'
+            });
+        }
     }
 
     resume() {
+        if (!this.isPaused) return;
         this.isPaused = false;
         this.tweens.resumeAll();
+
+        // Remove Grayscale
+        if (this.colorMatrix) {
+            this.colorMatrix.grayscale(0);
+        }
+
+        // Remove Borders
+        if (this.borderTop && this.borderBottom) {
+            // Kill existing tweens to prevent conflict
+            this.tweens.killTweensOf([this.borderTop, this.borderBottom]);
+
+            //  const height = this.scale.height;
+             this.tweens.add({
+                targets: this.borderTop,
+                y: 0,
+                duration: 300,
+                ease: 'Power2'
+            });
+            this.tweens.add({
+                targets: this.borderBottom,
+                y: 600, // Logical Y
+                duration: 300,
+                ease: 'Power2'
+            });
+        }
+        
+        // Notify Parent (React) to close inspector if needed
+        if (this.onResume) {
+            this.onResume();
+        }
     }
 
     updateHealth(target: Phaser.GameObjects.Container, damage: number) {

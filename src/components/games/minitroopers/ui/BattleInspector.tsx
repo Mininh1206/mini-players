@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import type { Trooper } from '@/logic/minitroopers/types';
 import SkillTooltip from './SkillTooltip';
 import { Weapon } from '@/logic/minitroopers/classes/Skill';
@@ -11,6 +12,13 @@ interface BattleInspectorProps {
 }
 
 const BattleInspector: React.FC<BattleInspectorProps> = ({ trooper, onClose, t }) => {
+    const [isVisible, setIsVisible] = React.useState(false);
+
+    React.useEffect(() => {
+        // Trigger animation next frame
+        requestAnimationFrame(() => setIsVisible(true));
+    }, [trooper]); // Re-trigger if trooper changes, though the component might be re-mounted.
+
     // Calculate current HP percentage
     const hpPercent = (trooper.attributes.hp / trooper.attributes.maxHp) * 100;
 
@@ -29,10 +37,10 @@ const BattleInspector: React.FC<BattleInspectorProps> = ({ trooper, onClose, t }
     };
 
     return (
-        <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-[2px]" onClick={onClose}>
+        <div className="absolute inset-0 z-[100] flex items-center justify-center pointer-events-none">
             <div 
-                className="bg-gray-900 border border-yellow-600/50 rounded-lg p-4 max-w-sm w-full shadow-2xl relative"
-                onClick={(e) => e.stopPropagation()}
+                className={`bg-gray-900 border border-yellow-600/50 rounded-lg p-4 max-w-sm w-full shadow-2xl relative pointer-events-auto transition-all duration-300 transform ${isVisible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}
+                onPointerDown={(e) => e.stopPropagation()}
             >
                 {/* Header Compact */}
                 <div className="flex justify-between items-center mb-3">
@@ -113,7 +121,7 @@ const BattleInspector: React.FC<BattleInspectorProps> = ({ trooper, onClose, t }
                 </button>
 
                 {/* Tooltip Portal */}
-                {hoveredSkill && (
+                {hoveredSkill && ReactDOM.createPortal(
                     <div 
                         style={{ 
                             position: 'fixed', 
@@ -124,7 +132,8 @@ const BattleInspector: React.FC<BattleInspectorProps> = ({ trooper, onClose, t }
                         }}
                     >
                         <SkillTooltip skill={hoveredSkill.skill} t={t} forceVisible={true} />
-                    </div>
+                    </div>,
+                    document.body
                 )}
             </div>
         </div>

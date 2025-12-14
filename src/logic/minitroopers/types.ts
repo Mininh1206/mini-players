@@ -46,6 +46,11 @@ export interface Trooper {
         priority: 'closest' | 'weakest' | 'strongest' | 'random';
         targetPart: 'any' | 'head' | 'heart' | 'arm' | 'leg';
     };
+    burstState?: {
+        shotsRemaining: number;
+        targetId: string;
+        weaponId: string;
+    };
     pendingChoices?: Skill[];
 }
 
