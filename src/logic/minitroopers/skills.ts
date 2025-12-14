@@ -24,7 +24,7 @@ export const SKILLS: Skill[] = [
     new Weapon('shotgun', 'Shotgun', 'High damage at close range.', '🔫', 10, 1, 2, 10, 80, 100, 2),
     new Weapon('double_barrel', 'Double-Barrelled Shotgun', 'Fires two powerful shots.', '🔫', 12, 2, 2, 15, 75, 150, 2),
     new Weapon('pump_action', 'Pump Action Shotgun', 'Reliable close-quarters weapon.', '🔫', 10, 1, 3, 10, 85, 90, 4),
-    new Weapon('scattergun', 'Scattergun', 'Wide spread damage.', '💥', 8, 3, 2, 5, 70, 120, 3),
+    new Weapon('scattergun', 'Scattergun', 'Wide spread damage.', '💥', 8, 3, 2, 5, 70, 120, 3, 60),
     new Weapon('semi_auto_shotgun', 'Semi-Auto Shotgun', 'Fast firing shotgun.', '🔫', 9, 2, 3, 5, 75, 80, 6),
 
     // Weapons - Assault
@@ -50,20 +50,20 @@ export const SKILLS: Skill[] = [
     new Weapon('sparrowhawk', 'SparrowHawk', 'Lightweight sniper rifle.', '🦅', 14, 1, 10, 20, 100, 130, 6),
 
     // Weapons - Heavy & Machine Guns
-    new Weapon('minigun', 'Minigun', 'Rapid fire heavy weapon.', '⚙️', 4, 10, 6, 5, 60, 200, 100),
+    new Weapon('minigun', 'Minigun', 'Rapid fire heavy weapon.', '⚙️', 4, 10, 6, 5, 60, 150, 100),
     new Weapon('gatling_gun', 'Gatling Gun', 'Old school rapid fire.', '⚙️', 5, 8, 6, 5, 65, 180, 80),
     new Weapon('comanche_auto', 'Comanche Auto', 'Automatic heavy weapon.', '🚙', 6, 6, 5, 5, 70, 160, 60),
     new Weapon('heavy_machine_gun', 'Heavy Machine Gun', 'Stationary firepower.', '🏗️', 8, 5, 7, 5, 60, 180, 50),
 
     // Weapons - Launchers
-    new Weapon('bazooka', 'Bazooka', 'Explosive anti-tank weapon.', '🚀', 30, 1, 8, 10, 70, 250, 1),
-    new Weapon('bazooka_m1', 'Bazooka M1', 'Standard bazooka.', '🚀', 25, 1, 8, 10, 75, 220, 2),
-    new Weapon('bazooka_m25', 'Bazooka M25', 'Advanced bazooka.', '🚀', 35, 1, 9, 15, 80, 280, 1),
-    new Weapon('infernal_tube', 'Infernal Tube', 'Fires incendiary rockets.', '🔥', 20, 1, 7, 5, 70, 200, 3),
-    new Weapon('rocket_launcher', 'Rocket Launcher', 'Rapid fire rockets.', '🚀', 15, 2, 8, 5, 65, 180, 4),
+    new Weapon('bazooka', 'Bazooka', 'Explosive anti-tank weapon.', '🚀', 30, 1, 8, 10, 70, 150, 1, 150, 40),
+    new Weapon('bazooka_m1', 'Bazooka M1', 'Standard bazooka.', '🚀', 25, 1, 8, 10, 75, 140, 2, 120, 30),
+    new Weapon('bazooka_m25', 'Bazooka M25', 'Advanced bazooka.', '🚀', 35, 1, 9, 15, 80, 160, 1, 180, 50),
+    new Weapon('infernal_tube', 'Infernal Tube', 'Fires incendiary rockets.', '🔥', 20, 1, 7, 5, 70, 200, 3, 150),
+    new Weapon('rocket_launcher', 'Rocket Launcher', 'Rapid fire rockets.', '🚀', 15, 2, 8, 5, 65, 180, 4, 100, 20),
 
     // Weapons - Melee
-    new Weapon('knife', 'Knife', 'Close quarters combat.', '🔪', 15, 1, 1, 20, 100, 20, 999),
+    new Weapon('knife', 'Knife', 'Close quarters combat.', '🔪', 5, 1, 1, 20, 100, 20, 999),
 
     // Ammunition
     new Equipment('explosive_shells', 'Explosive Shells', 'Bullets explode on impact.', '💥', 99),
@@ -73,15 +73,17 @@ export const SKILLS: Skill[] = [
     new Equipment('armor_piercing_shells', 'Armor-Piercing Shells', 'Ignores armor.', '🔩', 99),
 
     // Grenades
-    new Equipment('frag_grenade', 'Frag Grenade', 'Explodes dealing area damage.', '💣', 3),
-    new Equipment('flashbang', 'Flashbang', 'Blinds enemies, reducing aim.', '✨', 3),
-    new Equipment('gas_grenade', 'Gas Grenade', 'Poison cloud area.', '☁️', 3),
-    new Equipment('glue_grenade', 'Glue Grenade', 'Slows down enemies.', '🧴', 3),
-    new Equipment('shock_grenade', 'Shock Grenade', 'Stuns enemies.', '⚡', 3),
-    new Equipment('clown_grenade', 'Clown Grenade', 'Distracts enemies.', '🤡', 3),
-    new Equipment('grenade_benie', 'Grenade Benie', 'Lucky grenade.', '🍀', 3),
-    new Equipment('healing_grenade', 'Healing Grenade', 'Heals allies in area.', '❤️', 3),
-    new Equipment('black_hole_grenade', 'Black Hole Grenade', 'Sucks enemies in.', '⚫', 1),
+    // Grenades (Now Weapons for easier AI usage, with high Area, low Capacity)
+    // Grenades (Now Weapons for easier AI usage, with high Area, low Capacity)
+    new Weapon('frag_grenade', 'Frag Grenade', 'Explodes dealing area damage.', '💣', 20, 1, 6, 5, 70, 0, 3, 140, 30),
+    new Weapon('flashbang', 'Flashbang', 'Blinds enemies, reducing aim.', '✨', 5, 1, 5, 0, 80, 0, 3, 160, 60),
+    new Weapon('gas_grenade', 'Gas Grenade', 'Poison cloud area.', '☁️', 10, 1, 5, 0, 80, 0, 3, 150),
+    new Weapon('glue_grenade', 'Glue Grenade', 'Slows down enemies.', '🧴', 5, 1, 5, 0, 80, 0, 3, 150),
+    new Weapon('shock_grenade', 'Shock Grenade', 'Stuns enemies.', '⚡', 15, 1, 5, 0, 80, 0, 3, 120, 100),
+    new Weapon('clown_grenade', 'Clown Grenade', 'Distracts enemies.', '🤡', 10, 1, 5, 0, 80, 0, 3, 120, 20),
+    new Weapon('grenade_benie', 'Grenade Benie', 'Lucky grenade.', '🍀', 25, 1, 5, 10, 90, 0, 3, 130),
+    new Weapon('healing_grenade', 'Healing Grenade', 'Heals allies in area.', '❤️', 0, 1, 5, 0, 100, 0, 3, 150),
+    new Weapon('black_hole_grenade', 'Black Hole Grenade', 'Sucks enemies in.', '⚫', 50, 1, 5, 0, 80, 0, 1, 200, 150),
 
     // Other Skills (Passives & Active)
     new Other('zigzag', 'Zigzag', 'Harder to hit while moving.', '〰️'),

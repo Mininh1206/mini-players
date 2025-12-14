@@ -11,6 +11,7 @@ interface TrooperProfileProps {
     t: (key: any) => string;
     onUpdateTactics?: (tactics: any) => void;
     onSelectSkill?: (skill: any) => void;
+    upgradeCostCalculator?: (level: number) => number;
 }
 
 const StatRow: React.FC<{ label: string; value: number | string; icon?: string }> = ({ label, value }) => (
@@ -20,8 +21,9 @@ const StatRow: React.FC<{ label: string; value: number | string; icon?: string }
     </div>
 );
 
-const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrade, t, onUpdateTactics, onSelectSkill }) => {
-    const upgradeCost = (trooper.level || 1) * 50;
+const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrade, t, onUpdateTactics, onSelectSkill, upgradeCostCalculator }) => {
+    const defaultUpgradeCost = (trooper.level || 1) * 50;
+    const upgradeCost = upgradeCostCalculator ? upgradeCostCalculator(trooper.level || 1) : defaultUpgradeCost;
     const canAfford = gold >= upgradeCost;
 
     if (trooper.pendingChoices && trooper.pendingChoices.length > 0) {
@@ -53,13 +55,26 @@ const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrad
             <div className="w-full xl:w-1/3 flex flex-col items-center bg-gray-900/50 p-6 rounded-xl border border-gray-700/50">
                 <div className="w-56 h-56 bg-gray-900 rounded-full border-4 border-blue-500 flex items-center justify-center mb-6 shadow-xl overflow-hidden relative group transition-transform hover:scale-105">
                     <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black opacity-40"></div>
-                    <span className="text-7xl relative z-10">🪖</span>
+                    <span className="text-7xl relative z-10">
+                        {trooper.class === 'Rat' ? '🐀' : '🪖'}
+                    </span>
                     <div className="absolute bottom-4 bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-bold shadow-lg">
                         Lvl {trooper.level || 1}
                     </div>
                 </div>
                 <h2 className="text-4xl font-black text-white mb-2 tracking-tight">{trooper.name}</h2>
-                <div className="text-blue-400 font-bold text-xl mb-8 uppercase tracking-widest">{trooper.class}</div>
+                <div className="flex flex-col items-center gap-1 mb-6">
+                    <div className="flex items-center gap-2 text-gray-400 text-sm font-bold uppercase tracking-wider bg-gray-800 px-3 py-1 rounded-full">
+                        <span>🧬</span>
+                        <span>{trooper.class === 'Rat' ? 'Species: Rat' : 'Species: Human'}</span>
+                    </div>
+                    {trooper.class !== 'Recruit' && trooper.class !== 'Rat' && (
+                        <div className="flex items-center gap-2 text-yellow-400 text-lg font-black uppercase tracking-widest animate-pulse">
+                            <span>🎖️</span>
+                            <span>{trooper.class}</span>
+                        </div>
+                    )}
+                </div>
                 
                 <button 
                     onClick={() => onUpgrade(upgradeCost)}

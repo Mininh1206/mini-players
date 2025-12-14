@@ -1,62 +1,92 @@
-import React from 'react';
-import { useTranslation } from '@/logic/minitroopers/i18n';
+import { calculateSquadPower } from '@/logic/minitroopers/combat';
+import type { Trooper } from '@/logic/minitroopers/types';
 
 interface BattleArenaProps {
     onStartBattle: (opponentName: string) => void;
     t: (key: any) => string;
+    playerPower?: number;
+    getCampaignOpponent?: (stage: number) => Trooper[];
 }
 
-const OpponentCard: React.FC<{ name: string; power: number; onClick: () => void; t: (key: any) => string }> = ({ name, power, onClick, t }) => {
+const BattleArena: React.FC<BattleArenaProps> = ({ onStartBattle, t, playerPower = 0, getCampaignOpponent }) => {
     return (
-        <div className="bg-gray-800 p-4 rounded-lg border border-gray-700 hover:border-red-500 hover:bg-gray-750 transition cursor-pointer flex justify-between items-center group" onClick={onClick}>
-            <div>
-                <div className="font-bold text-white group-hover:text-red-400 transition">{name}</div>
-                <div className="text-sm text-gray-400">{t('power')}: {power}</div>
-            </div>
-            <button className="px-4 py-2 bg-red-900 text-red-100 rounded border border-red-700 group-hover:bg-red-600 group-hover:text-white transition">
-                {t('attack')}
-            </button>
-        </div>
-    );
-};
-
-const BattleArena: React.FC<BattleArenaProps> = ({ onStartBattle, t }) => {
-    return (
-        <div className="flex flex-col h-full">
-            <h2 className="text-4xl font-black text-white mb-8 tracking-tight">{t('battle_arena')}</h2>
+        <div className="flex flex-col h-full gap-8">
+            <h2 className="text-4xl font-black text-white px-2 tracking-tight">{t('battle_arena')}</h2>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 mb-12">
-                {/* PvE Mission */}
-                <div className="bg-gradient-to-br from-green-900 to-green-800 p-8 rounded-2xl border border-green-700 shadow-xl relative overflow-hidden group cursor-pointer transition-transform hover:scale-105" onClick={() => onStartBattle('Mission: Infiltration')}>
-                    <div className="absolute top-0 right-0 p-4 opacity-20 text-8xl group-hover:scale-110 transition duration-500">🌲</div>
-                    <h3 className="text-3xl font-bold text-white mb-3">{t('mission_infiltration')}</h3>
-                    <p className="text-green-200 mb-6 text-lg">{t('mission_infiltration_desc')}</p>
-                    <div className="inline-block px-4 py-2 bg-black bg-opacity-30 rounded-lg text-green-100 font-bold">{t('reward')}: 10 💰</div>
-                </div>
+            {/* Special Ops Section */}
+            <div>
+                <h3 className="text-2xl font-bold text-blue-400 mb-4 px-2 uppercase tracking-widest border-b border-blue-900/50 pb-2">{t('special_ops')}</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Easy Money */}
+                    <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 hover:border-yellow-500 transition cursor-pointer group relative overflow-hidden" onClick={() => onStartBattle('easy_money')}>
+                        <div className="absolute -right-4 -top-4 text-8xl opacity-10 group-hover:scale-110 transition duration-500 text-yellow-500">💰</div>
+                        <h4 className="text-xl font-bold text-white mb-2">{t('battle_training_dummy')}</h4>
+                        <p className="text-gray-400 text-sm mb-4 relative z-10">{t('battle_training_dummy_desc')}</p>
+                        <div className="flex justify-between items-center text-xs font-bold">
+                             <span className="text-gray-500">{t('power')}: 1</span>
+                             <span className="text-yellow-400">{t('reward')}: 500 💰</span>
+                        </div>
+                    </div>
 
-                {/* Raid Mission */}
-                <div className="bg-gradient-to-br from-purple-900 to-purple-800 p-8 rounded-2xl border border-purple-700 shadow-xl relative overflow-hidden group cursor-pointer transition-transform hover:scale-105" onClick={() => onStartBattle('Mission: Raid')}>
-                     <div className="absolute top-0 right-0 p-4 opacity-20 text-8xl group-hover:scale-110 transition duration-500">🏰</div>
-                    <h3 className="text-3xl font-bold text-white mb-3">{t('mission_raid')}</h3>
-                    <p className="text-purple-200 mb-6 text-lg">{t('mission_raid_desc')}</p>
-                     <div className="inline-block px-4 py-2 bg-black bg-opacity-30 rounded-lg text-purple-100 font-bold">{t('reward')}: 100 💰</div>
+                    {/* Rats Swarm */}
+                    <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 hover:border-green-500 transition cursor-pointer group relative overflow-hidden" onClick={() => onStartBattle('progressive_rats')}>
+                        <div className="absolute -right-4 -top-4 text-8xl opacity-10 group-hover:scale-110 transition duration-500 text-green-500">🐀</div>
+                        <h4 className="text-xl font-bold text-white mb-2">{t('battle_rats_swarm')}</h4>
+                        <p className="text-gray-400 text-sm mb-4 relative z-10">{t('battle_rats_swarm_desc')}</p>
+                         <div className="flex justify-between items-center text-xs font-bold">
+                             <span className="text-gray-500">{t('power')}: ~{Math.floor(playerPower * 0.5)}</span>
+                             <span className="text-green-400">{t('reward')}: Scale 💰</span>
+                        </div>
+                    </div>
+
+                    {/* Rival Squad */}
+                    <div className="bg-gray-800 p-6 rounded-xl border border-gray-700 hover:border-red-500 transition cursor-pointer group relative overflow-hidden" onClick={() => onStartBattle('progressive_troopers')}>
+                        <div className="absolute -right-4 -top-4 text-8xl opacity-10 group-hover:scale-110 transition duration-500 text-red-500">⚔️</div>
+                        <h4 className="text-xl font-bold text-white mb-2">{t('battle_progressive_squad')}</h4>
+                        <p className="text-gray-400 text-sm mb-4 relative z-10">{t('battle_progressive_squad_desc')}</p>
+                         <div className="flex justify-between items-center text-xs font-bold">
+                             <span className="text-red-400">{t('challenge')} ({t('power')}: ~{Math.floor(playerPower * 1.2)})</span>
+                             <span className="text-blue-400">{t('reward')}: High 💰</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <h3 className="text-2xl font-bold text-gray-300 mb-6 border-b border-gray-700 pb-2">{t('select_opponent')}</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                <OpponentCard name="Training: Rats" power={5} onClick={() => onStartBattle('Training: Rats')} t={t} />
-                <OpponentCard name="Training: Recruits" power={10} onClick={() => onStartBattle('Training: Recruits')} t={t} />
-                <OpponentCard name="Army of Darkness" power={45} onClick={() => onStartBattle('Army of Darkness')} t={t} />
-                <OpponentCard name="The Peacekeepers" power={52} onClick={() => onStartBattle('The Peacekeepers')} t={t} />
-                <OpponentCard name="Random Noobs" power={30} onClick={() => onStartBattle('Random Noobs')} t={t} />
+            {/* Campaign Section */}
+            <div className="flex-1">
+                <h3 className="text-2xl font-bold text-purple-400 mb-4 px-2 uppercase tracking-widest border-b border-purple-900/50 pb-2">{t('campaign')}</h3>
+                <p className="text-gray-400 px-2 mb-6">{t('campaign_desc')}</p>
                 
-                {/* Advanced Opponents */}
-                <OpponentCard name="The Elite Guard" power={60} onClick={() => onStartBattle('The Elite Guard')} t={t} />
-                <OpponentCard name="Special Forces" power={75} onClick={() => onStartBattle('Special Forces')} t={t} />
-                <OpponentCard name="Cyber Command" power={90} onClick={() => onStartBattle('Cyber Command')} t={t} />
-                <OpponentCard name="Shadow Ops" power={110} onClick={() => onStartBattle('Shadow Ops')} t={t} />
-                <OpponentCard name="The Immortals" power={150} onClick={() => onStartBattle('The Immortals')} t={t} />
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {Array(20).fill(null).map((_, idx) => {
+                        const stage = idx + 1;
+                        const opponent = getCampaignOpponent ? getCampaignOpponent(stage) : [];
+                        const power = calculateSquadPower(opponent);
+                        
+                        return (
+                            <div 
+                                key={stage}
+                                onClick={() => onStartBattle(`campaign_${stage}`)}
+                                className="bg-gray-900 p-4 rounded-lg border border-gray-800 hover:border-purple-500 hover:bg-gray-800 transition cursor-pointer flex flex-col justify-between"
+                            >
+                                <div>
+                                    <div className="text-xs text-purple-500 font-bold mb-1">STAGE {stage}</div>
+                                    <div className="font-bold text-white text-sm mb-2">{t(`mission_${stage}`)}</div>
+                                    <div className="text-xs text-gray-500 mb-3 leading-tight">{t(`mission_${stage}_desc`)}</div>
+                                </div>
+                                
+                                <div className="mt-auto pt-2 border-t border-gray-800 flex justify-between items-end">
+                                    <div className="text-xs text-gray-400">
+                                        ⚡ {power}
+                                    </div>
+                                    <div className="text-xs font-bold text-yellow-500">
+                                        {stage * 50} 💰
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
         </div>
     );

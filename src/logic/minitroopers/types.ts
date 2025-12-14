@@ -1,4 +1,4 @@
-export type TrooperClass = 'Recruit' | 'Soldier' | 'Sniper' | 'Doctor' | 'Pilot' | 'Commando' | 'Scout' | 'Spy' | 'Saboteur' | 'Comms Officer';
+export type TrooperClass = 'Recruit' | 'Soldier' | 'Sniper' | 'Doctor' | 'Pilot' | 'Commando' | 'Scout' | 'Spy' | 'Saboteur' | 'Comms Officer' | 'Rat';
 
 export interface TrooperAttributes {
     hp: number;
@@ -56,7 +56,7 @@ export interface BattleLogEntry {
     actorName: string;
     targetId?: string;
     targetName?: string;
-    action: 'attack' | 'heal' | 'wait' | 'move' | 'deploy' | 'switch_weapon' | 'reload' | 'use_equipment';
+    action: 'attack' | 'heal' | 'wait' | 'move' | 'deploy' | 'switch_weapon' | 'reload' | 'use_equipment' | 'swap' | 'melee' | 'knockback';
     damage?: number;
     heal?: number;
     targetPosition?: { x: number; y: number };
@@ -80,6 +80,8 @@ export interface BattleHistoryEntry {
     opponentName: string;
     result: 'VICTORY' | 'DEFEAT';
     log: BattleLogEntry[];
+    mySquadSnapshot?: Trooper[];
+    opponentSquadSnapshot?: Trooper[];
 }
 
 export interface Player {

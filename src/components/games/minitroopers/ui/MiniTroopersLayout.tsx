@@ -7,85 +7,15 @@ import BattleArena from './BattleArena';
 import RecruitmentCenter from './RecruitmentCenter';
 import type { Trooper, BattleResult, Player, BattleHistoryEntry } from '@/logic/minitroopers/types';
 import { useTranslation } from '@/logic/minitroopers/i18n';
-import { simulateBattle } from '@/logic/minitroopers/combat';
+import { simulateBattle, calculateSquadPower } from '@/logic/minitroopers/combat';
 import MiniTroopersGame from '@/components/games/minitroopers/MiniTroopersGame';
 import { saveGame, loadGame } from '@/logic/minitroopers/storage';
-import { generateRandomTrooper } from '@/logic/minitroopers/generators';
+import { generateRandomTrooper, generateRat, generateSpecificTrooper, recalculateTrooperHp } from '@/logic/minitroopers/generators';
 import { getRandomSkill, getSkillsByLevel } from '@/logic/minitroopers/skills';
 import { v4 as uuidv4 } from 'uuid';
 
-// Mock Opponents (kept for now)
-// Mock Opponents
-const MOCK_OPPONENTS: Record<string, Trooper[]> = {
-    'Training: Rats': [
-         { id: 'r1', name: 'Rat', class: 'Scout', team: 'B', isDead: false, skills: [], level: 1, attributes: { hp: 10, maxHp: 10, initiative: 5, range: 1, damage: 2, aim: 60, dodge: 10, armor: 0, critChance: 5, speed: 80 }, ammo: {}, cooldown: 0, disarmed: [] },
-         { id: 'r2', name: 'Rat', class: 'Scout', team: 'B', isDead: false, skills: [], level: 1, attributes: { hp: 10, maxHp: 10, initiative: 5, range: 1, damage: 2, aim: 60, dodge: 10, armor: 0, critChance: 5, speed: 80 }, ammo: {}, cooldown: 0, disarmed: [] }
-    ],
-    'Training: Recruits': [
-        { id: 'n1', name: 'Recruit', class: 'Recruit', team: 'B', isDead: false, skills: [], level: 1, attributes: { hp: 50, maxHp: 50, initiative: 10, range: 1, damage: 10, aim: 80, dodge: 10, armor: 0, critChance: 5, speed: 100 }, ammo: {}, cooldown: 0, disarmed: [] }
-    ],
-    'Mission: Infiltration': [
-         { id: 'r1', name: 'Rat', class: 'Scout', team: 'B', isDead: false, skills: [], level: 1, attributes: { hp: 10, maxHp: 10, initiative: 20, range: 1, damage: 3, aim: 90, dodge: 30, armor: 0, critChance: 50, speed: 150 }, ammo: {}, cooldown: 0, disarmed: [] },
-         { id: 'r2', name: 'Rat', class: 'Scout', team: 'B', isDead: false, skills: [], level: 1, attributes: { hp: 10, maxHp: 10, initiative: 20, range: 1, damage: 3, aim: 90, dodge: 30, armor: 0, critChance: 50, speed: 150 }, ammo: {}, cooldown: 0, disarmed: [] },
-         { id: 'r3', name: 'Giant Rat', class: 'Soldier', team: 'B', isDead: false, skills: [], level: 1, attributes: { hp: 50, maxHp: 50, initiative: 10, range: 1, damage: 10, aim: 80, dodge: 10, armor: 1, critChance: 10, speed: 110 }, ammo: {}, cooldown: 0, disarmed: [] }
-    ],
-    'Mission: Raid': [
-        { id: 'b1', name: 'Boss', class: 'Soldier', team: 'B', isDead: false, skills: [], level: 1, attributes: { hp: 200, maxHp: 200, initiative: 15, range: 2, damage: 20, aim: 95, dodge: 10, armor: 5, critChance: 10, speed: 120 }, ammo: {}, cooldown: 0, disarmed: [] }
-    ],
-    // Standard Opponents
-    'Army of Darkness': [
-        generateRandomTrooper(3),
-        generateRandomTrooper(3),
-        generateRandomTrooper(3)
-    ],
-    'The Peacekeepers': [
-        generateRandomTrooper(4),
-        generateRandomTrooper(4),
-        generateRandomTrooper(4),
-        generateRandomTrooper(4)
-    ],
-    'Random Noobs': [
-        generateRandomTrooper(2),
-        generateRandomTrooper(2),
-        generateRandomTrooper(2)
-    ],
-    // Advanced Opponents
-    'The Elite Guard': [
-        generateRandomTrooper(6),
-        generateRandomTrooper(6),
-        generateRandomTrooper(6)
-    ],
-    'Special Forces': [
-        generateRandomTrooper(7),
-        generateRandomTrooper(7),
-        generateRandomTrooper(7),
-        generateRandomTrooper(7)
-    ],
-    'Cyber Command': [
-        generateRandomTrooper(8),
-        generateRandomTrooper(8),
-        generateRandomTrooper(8),
-        generateRandomTrooper(8),
-        generateRandomTrooper(8)
-    ],
-    'Shadow Ops': [
-        generateRandomTrooper(9),
-        generateRandomTrooper(9),
-        generateRandomTrooper(9),
-        generateRandomTrooper(9),
-        generateRandomTrooper(9),
-        generateRandomTrooper(9)
-    ],
-    'The Immortals': [
-        generateRandomTrooper(10),
-        generateRandomTrooper(10),
-        generateRandomTrooper(10),
-        generateRandomTrooper(10),
-        generateRandomTrooper(10),
-        generateRandomTrooper(10),
-        generateRandomTrooper(10)
-    ]
-};
+// MOCK OPPONENTS REMOVED - Using Dynamic Generation
+
 
 type View = 'HQ' | 'BATTLE' | 'HISTORY' | 'SIMULATION' | 'RECRUIT';
 
@@ -106,6 +36,9 @@ const MiniTroopersLayout: React.FC = () => {
             if (!savedState.history) savedState.history = [];
             setPlayer(savedState);
             if (savedState.troopers.length > 0) {
+                // Migration: Recalculate HP for all troopers to ensure consistency
+                savedState.troopers = savedState.troopers.map(t => recalculateTrooperHp(t));
+                
                 setSelectedTrooperId(savedState.troopers[0].id);
             }
         } else {
@@ -146,13 +79,79 @@ const MiniTroopersLayout: React.FC = () => {
         }
     };
 
-    const handleStartBattle = (opponentName: string) => {
-        if (!player) return;
-        const opponentSquad = MOCK_OPPONENTS[opponentName];
-        if (!opponentSquad) {
-            alert('Opponent not found!');
-            return;
+    const getCampaignOpponent = (stage: number): Trooper[] => {
+        // Progression Logic:
+        // Tier 1: 1-5 (Rats) - Levels 1-3. Squad size 1->4.
+        // Tier 2: 6-10 (Recruits/Soldiers) - Levels 2-4. Squad size 2->5.
+        // Tier 3: 11-15 (Specialists) - Levels 4-6. Squad size 4->5.
+        // Tier 4: 16-20 (Elites) - Levels 7-12. Squad size 5->8.
+
+        switch (stage) {
+            // Tier 1: Rats (Tutorial) - Low Power
+            case 1: return [generateRat(1)]; // Power ~20
+            case 2: return [generateRat(1), generateRat(1)]; // Power ~40
+            case 3: return [generateRat(2), generateRat(1), generateRat(1)]; // Power ~70
+            case 4: return [generateRat(2), generateRat(2), generateRat(2)]; // Power ~90
+            case 5: return [generateRat(3), generateRat(3), generateRat(2), generateRat(2)]; // Power ~140 (Boss of Tier 1)
+            
+            // Tier 2: The Army (Recruits) - significantly stronger than Rats
+            case 6: return [generateSpecificTrooper('Recruit', 3), generateSpecificTrooper('Recruit', 3)]; // Power ~150 (2 stronger units > 4 weak rats)
+            case 7: return [generateSpecificTrooper('Recruit', 4), generateSpecificTrooper('Soldier', 3), generateSpecificTrooper('Recruit', 3)]; // Power ~200
+            case 8: return [generateSpecificTrooper('Soldier', 4), generateSpecificTrooper('Soldier', 4), generateSpecificTrooper('Doctor', 3)]; // Power ~250
+            case 9: return [generateSpecificTrooper('Soldier', 5), generateSpecificTrooper('Soldier', 5), generateSpecificTrooper('Sniper', 4), generateSpecificTrooper('Recruit', 4)]; // Power ~300
+            case 10: return [generateSpecificTrooper('Commando', 5), generateSpecificTrooper('Doctor', 5), generateSpecificTrooper('Soldier', 5), generateSpecificTrooper('Soldier', 5)]; // Power ~350
+            
+            // Tier 3: Special Forces - High Skill
+            case 11: return [generateSpecificTrooper('Soldier', 6), generateSpecificTrooper('Soldier', 6), generateSpecificTrooper('Sniper', 6), generateSpecificTrooper('Doctor', 5)]; // Power ~450
+            case 12: return [generateSpecificTrooper('Commando', 6), generateSpecificTrooper('Commando', 6), generateSpecificTrooper('Scout', 6), generateSpecificTrooper('Soldier', 6)]; // Power ~500
+            case 13: return [generateSpecificTrooper('Spy', 7), generateSpecificTrooper('Saboteur', 7), generateSpecificTrooper('Soldier', 7), generateSpecificTrooper('Soldier', 7), generateSpecificTrooper('Doctor', 6)]; // Power ~600
+            case 14: return [generateSpecificTrooper('Pilot', 7), generateSpecificTrooper('Pilot', 7), generateSpecificTrooper('Pilot', 7), generateSpecificTrooper('Pilot', 7), generateSpecificTrooper('Soldier', 7)]; // Power ~700
+            case 15: return [generateSpecificTrooper('Sniper', 8), generateSpecificTrooper('Sniper', 8), generateSpecificTrooper('Soldier', 8), generateSpecificTrooper('Soldier', 8), generateSpecificTrooper('Comms Officer', 8)]; // Power ~800
+
+            // Tier 4: Legends - Impossible?
+            case 16: 
+                     // Using 'Commando' as tanky proxy since 'Heavy Tank' is not a valid class.
+                     return [generateSpecificTrooper('Commando', 9), generateSpecificTrooper('Commando', 9), generateSpecificTrooper('Doctor', 9), generateSpecificTrooper('Comms Officer', 9), generateSpecificTrooper('Soldier', 9)]; 
+            case 17: return [generateSpecificTrooper('Commando', 10), generateSpecificTrooper('Commando', 10), generateSpecificTrooper('Commando', 10), generateSpecificTrooper('Spy', 10), generateSpecificTrooper('Spy', 10)]; // Power ~1000
+            case 18: return [generateSpecificTrooper('Sniper', 11), generateSpecificTrooper('Sniper', 11), generateSpecificTrooper('Sniper', 11), generateSpecificTrooper('Scout', 11), generateSpecificTrooper('Scout', 11), generateSpecificTrooper('Saboteur', 11)]; // Power ~1200
+            case 19: return [generateSpecificTrooper('Soldier', 12), generateSpecificTrooper('Soldier', 12), generateSpecificTrooper('Soldier', 12), generateSpecificTrooper('Doctor', 12), generateSpecificTrooper('Comms Officer', 12), generateSpecificTrooper('Commando', 12)]; // Power ~1400
+            case 20: return [generateSpecificTrooper('Soldier', 13), generateSpecificTrooper('Soldier', 13), generateSpecificTrooper('Soldier', 13), generateSpecificTrooper('Soldier', 13), generateSpecificTrooper('Soldier', 13), generateSpecificTrooper('Soldier', 13), generateSpecificTrooper('Soldier', 13), generateSpecificTrooper('Soldier', 13)]; // The Final Stand (Army of 8) ~2000
+            
+            default: return [generateRat(1)];
         }
+    };
+
+    const generateOpponent = (type: string, playerPower: number): Trooper[] => {
+        if (type.startsWith('campaign_')) {
+            const stage = parseInt(type.split('_')[1]);
+            return getCampaignOpponent(stage);
+        } else if (type === 'easy_money') {
+            // Very weak, high reward
+            return [
+                { id: 'dummy1', name: 'Training Dummy', class: 'Recruit', team: 'B', isDead: false, skills: [], level: 1, attributes: { hp: 10, maxHp: 10, initiative: 1, range: 1, damage: 0, aim: 0, dodge: 0, armor: 0, critChance: 0, speed: 10 }, ammo: {}, cooldown: 0, disarmed: [] },
+                { id: 'dummy2', name: 'Training Dummy', class: 'Recruit', team: 'B', isDead: false, skills: [], level: 1, attributes: { hp: 10, maxHp: 10, initiative: 1, range: 1, damage: 0, aim: 0, dodge: 0, armor: 0, critChance: 0, speed: 10 }, ammo: {}, cooldown: 0, disarmed: [] }
+            ];
+        } else if (type === 'progressive_rats') {
+            // Rats Swarm: 2 Rats + 1 per 50 power
+            const count = Math.min(2 + Math.floor(playerPower / 50), 12);
+            return Array(count).fill(null).map(() => generateRat(1));
+        } else if (type === 'progressive_troopers') {
+            // Rival Squad: +20% Power Challenge
+            const targetPower = Math.floor(playerPower * 1.2);
+            const squadSize = player?.troopers.length || 3;
+            const avgLevel = (player?.troopers.reduce((sum, t) => sum + t.level, 0) || 3) / squadSize;
+            // Generate roughly matching level, maybe +1
+            return Array(squadSize).fill(null).map(() => generateRandomTrooper(Math.max(1, Math.floor(avgLevel * 1.1))));
+        }
+        return [generateSpecificTrooper('Recruit', 1)];
+    };
+
+    const handleStartBattle = (battleType: string) => {
+        if (!player) return;
+        
+        const myPower = calculateSquadPower(player.troopers);
+        const opponentSquad = generateOpponent(battleType, myPower);
+        
         
         // Deep copy to avoid mutating initial state across battles
         const mySquad = player.troopers.map(t => ({ ...t, isDead: false, attributes: { ...t.attributes, hp: t.attributes.maxHp } }));
@@ -171,17 +170,29 @@ const MiniTroopersLayout: React.FC = () => {
                 {
                     id: uuidv4(),
                     date: Date.now(),
-                    opponentName,
+                    opponentName: battleType, // Use Type as name for now, or map to localised string
+
                     result: (result.winner === 'A' ? 'VICTORY' : 'DEFEAT') as 'VICTORY' | 'DEFEAT',
-                    log: result.log
+                    log: result.log,
+                    mySquadSnapshot: mySquad,
+                    opponentSquadSnapshot: enemySquad
                 },
                 ...(prev.history || [])
             ].slice(0, 20); // Keep last 20 battles
 
             let newGold = prev.gold;
             if (result.winner === 'A') {
-                const reward = opponentName === 'Mission: Raid' ? 100 : 10;
+            if (result.winner === 'A') {
+                let reward = 10;
+                if (battleType === 'easy_money') reward = 500;
+                else if (battleType === 'progressive_rats') reward = 10 + Math.floor(myPower / 10);
+                else if (battleType === 'progressive_troopers') reward = 30 + Math.floor(myPower / 4);
+                else if (battleType.startsWith('campaign_')) {
+                    const stage = parseInt(battleType.split('_')[1]);
+                    reward = stage * 50; // 50, 100, 150...
+                }
                 newGold += reward;
+            }
             }
 
             return { ...prev, gold: newGold, history: newHistory };
@@ -249,20 +260,17 @@ const MiniTroopersLayout: React.FC = () => {
                             newClass = skill.name as any; 
                         }
 
-                        return {
+                        let updatedTrooper: Trooper = {
                             ...t,
                             level: t.level + 1,
                             class: newClass,
-                            attributes: {
-                                ...t.attributes,
-                                hp: t.attributes.hp + 10,
-                                maxHp: t.attributes.maxHp + 10,
-                                damage: t.attributes.damage + 2
-                            },
                             skills: newSkills,
                             ammo: newAmmo,
                             pendingChoices: undefined
                         };
+
+                        // Recalculate HP correctly based on new level and skills
+                        return recalculateTrooperHp(updatedTrooper);
                     }
                     return t;
                 })
@@ -283,7 +291,10 @@ const MiniTroopersLayout: React.FC = () => {
 
     const handleRecruit = (trooper: Trooper) => {
         if (!player) return;
-        const cost = 50; // Fixed cost for now
+        const baseCost = 50;
+        const count = player.troopers.length;
+        // Exponential cost: 50 * (1.5 ^ count)
+        const cost = Math.floor(baseCost * Math.pow(1.5, count));
         if (player.gold >= cost) {
             setPlayer(prev => {
                 if (!prev) return null;
@@ -329,6 +340,7 @@ const MiniTroopersLayout: React.FC = () => {
                         <h1 className="text-2xl font-black italic tracking-wider text-yellow-500">MINI TROOPERS</h1>
                         <div className="text-xs text-gray-500 tracking-widest">{player.name}</div>
                         <div className="text-yellow-400 font-bold mt-1">{player.gold} 💰</div>
+                        <div className="text-blue-400 font-bold text-xs mt-1">Power: {calculateSquadPower(player.troopers)} ⚡</div>
                     </div>
                     <div className="flex gap-1">
                         <button onClick={() => changeLanguage('en')} className={`text-xs px-1 ${lang === 'en' ? 'text-white font-bold' : 'text-gray-600'}`}>EN</button>
@@ -409,6 +421,7 @@ const MiniTroopersLayout: React.FC = () => {
                                 gold={player.gold}
                                 onUpgrade={(cost) => handleUpgradeTrooper(selectedTrooper.id, cost)}
                                 t={t}
+                                upgradeCostCalculator={(level) => Math.floor(5 * Math.pow(1.3, level))}
                                 onUpdateTactics={handleUpdateTactics}
                                 onSelectSkill={(skill) => handleSelectSkill(selectedTrooper.id, skill)}
                             />
@@ -420,8 +433,9 @@ const MiniTroopersLayout: React.FC = () => {
                             <RecruitmentCenter 
                                 candidates={recruitCandidates}
                                 onRecruit={handleRecruit}
-                                recruitCost={50}
-                                canAfford={player.gold >= 50}
+                                recruitCostCalculator={(count) => Math.floor(50 * Math.pow(1.5, count))}
+                                currentCount={player.troopers.length}
+                                canAfford={(cost) => player.gold >= cost}
                                 t={t}
                             />
                         </div>
@@ -429,7 +443,12 @@ const MiniTroopersLayout: React.FC = () => {
                     
                     {currentView === 'BATTLE' && (
                         <div className="max-w-6xl mx-auto">
-                             <BattleArena onStartBattle={handleStartBattle} t={t} />
+                            <BattleArena 
+                                onStartBattle={handleStartBattle}
+                                t={t} 
+                                playerPower={calculateSquadPower(player.troopers)}
+                                getCampaignOpponent={getCampaignOpponent}
+                             />
                         </div>
                     )}
 
@@ -453,8 +472,8 @@ const MiniTroopersLayout: React.FC = () => {
                             <div className="flex-1 bg-black rounded-xl overflow-hidden border border-gray-800 shadow-2xl relative">
                                 <MiniTroopersGame 
                                     battleResult={battleResult}
-                                    mySquad={player.troopers}
-                                    opponentSquad={currentOpponent} 
+                                    mySquad={currentView === 'SIMULATION' && battleResult ? (battleResult as any).mySquadSnapshot || player.troopers : player.troopers}
+                                    opponentSquad={currentView === 'SIMULATION' && battleResult ? (battleResult as any).opponentSquadSnapshot || currentOpponent : currentOpponent} 
                                 />
                             </div>
 
@@ -488,6 +507,29 @@ const MiniTroopersLayout: React.FC = () => {
                                                 <div className={`px-3 py-1 rounded font-bold text-sm ${entry.result === 'VICTORY' ? 'bg-green-900/50 text-green-400 border border-green-800' : 'bg-red-900/50 text-red-400 border border-red-800'}`}>
                                                     {entry.result}
                                                 </div>
+                                                {entry.mySquadSnapshot && entry.opponentSquadSnapshot && (
+                                                    <button 
+                                                        onClick={() => {
+                                                            setBattleResult({
+                                                                winner: entry.result === 'VICTORY' ? 'A' : 'B', // Approximate, logic might be needed if draw
+                                                                log: entry.log,
+                                                                survivorsA: [], // Not needed for replay usually
+                                                                survivorsB: [],
+                                                                // Attach snapshots to result-like object or handle via separate state?
+                                                                // Let's cheat and attach to battleResult state which is passed to game
+                                                                ...({ mySquadSnapshot: entry.mySquadSnapshot, opponentSquadSnapshot: entry.opponentSquadSnapshot } as any)
+                                                            } as any);
+                                                            // We need to set currentOpponent to avoid "opponent not found" errors/mocks if we used them? 
+                                                            // Actually MiniTroopersGame uses props. 
+                                                            // But we need to ensure the game component receives these.
+                                                            // See change above in SIMULATION view for how we pass props.
+                                                            setCurrentView('SIMULATION');
+                                                        }}
+                                                        className="px-3 py-1 bg-blue-900/50 text-blue-400 border border-blue-800 rounded font-bold text-sm hover:bg-blue-800 hover:text-white transition"
+                                                    >
+                                                        ▶ {t('replay') || 'Replay'}
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     ))}

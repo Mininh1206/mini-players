@@ -47,7 +47,9 @@ export class Weapon extends Skill {
         public crit: number = 0,
         public aim: number = 0,
         public recovery: number = 0,
-        public capacity: number = 1
+        public capacity: number = 1,
+        public area: number = 0,
+        public stun: number = 0
     ) {
         super(id, name, description, icon);
     }

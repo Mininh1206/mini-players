@@ -6,16 +6,21 @@ import SkillTooltip from './SkillTooltip';
 interface RecruitmentCenterProps {
     candidates: Trooper[];
     onRecruit: (trooper: Trooper) => void;
-    recruitCost: number;
-    canAfford: boolean;
+    recruitCost?: number;
+    recruitCostCalculator?: (count: number) => number;
+    currentCount?: number;
+    canAfford: (cost: number) => boolean;
     t: (key: any) => string;
 }
 
-const RecruitmentCenter: React.FC<RecruitmentCenterProps> = ({ candidates, onRecruit, recruitCost, canAfford, t }) => {
+const RecruitmentCenter: React.FC<RecruitmentCenterProps> = ({ candidates, onRecruit, recruitCost = 50, recruitCostCalculator, currentCount = 0, canAfford, t }) => {
+    const finalRecruitCost = recruitCostCalculator ? recruitCostCalculator(currentCount) : recruitCost;
+    const isAffordable = typeof canAfford === 'function' ? canAfford(finalRecruitCost) : canAfford; // Fallback for boolean prop if mixed usage (though cleaner to use one)
+
     return (
         <div className="p-6 bg-gray-800 rounded-lg shadow-lg">
             <h2 className="text-2xl font-bold text-white mb-4">{t('recruit_trooper')}</h2>
-            <p className="text-gray-400 mb-6">Hire new troopers to expand your army. Cost: <span className="text-yellow-400 font-bold">{recruitCost} 💰</span></p>
+            <p className="text-gray-400 mb-6">Hire new troopers to expand your army. Cost: <span className="text-yellow-400 font-bold">{finalRecruitCost} 💰</span></p>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {candidates.map((trooper) => (
@@ -49,9 +54,9 @@ const RecruitmentCenter: React.FC<RecruitmentCenterProps> = ({ candidates, onRec
 
                         <button
                             onClick={() => onRecruit(trooper)}
-                            disabled={!canAfford}
+                            disabled={!isAffordable}
                             className={`w-full py-2 px-4 rounded font-bold transition-colors mt-2 ${
-                                canAfford 
+                                isAffordable 
                                     ? 'bg-green-600 hover:bg-green-500 text-white shadow-lg transform hover:scale-105' 
                                     : 'bg-gray-600 text-gray-400 cursor-not-allowed'
                             }`}
