@@ -55,7 +55,8 @@ export class Weapon extends Skill {
         public maxDamage: number = 0, // If 0, use damage as fixed value
         public totalAmmo: number = 0, // Total ammo carried
         public ignoreArmor: boolean = false,
-        public critMult: number = 2.0
+        public critMult: number = 2.0,
+        public penetration: number = 0 // Number of additional targets bullet can pass through
     ) {
         super(id, name, description, icon);
     }
@@ -81,18 +82,14 @@ export class Handgun extends Weapon {
 
 export class SniperRifle extends Weapon {
     constructor(id: string, name: string, description: string, icon: string, damage: number, bursts: number, range: number, crit: number, aim: number, recovery: number, cap: number, rangeMin: number, enc: number, maxDamage: number, totalAmmo: number, critMult: number = 5.0) {
-        super(id, name, description, icon, damage, bursts, range, crit, aim, recovery, cap, 0, 0, rangeMin, enc, maxDamage, totalAmmo, true, critMult); // Snipers usually ignore armor or high damage? User table says "Secure zone". Some say "Heavy".
-        // Use generic boolean? Or default false.
-        // User list: only Thompson/Desert Eagle said "Ignore Armor".
-        // I will default false and pass it.
-        // Re-signature:
+        super(id, name, description, icon, damage, bursts, range, crit, aim, recovery, cap, 0, 0, rangeMin, enc, maxDamage, totalAmmo, true, critMult, 1); // penetration=1: bullets pass through 1 target
     }
 }
 // Redo Sniper Signature in next step to correct "true" fallback if not intended.
 
 export class MachineGun extends Weapon {
     constructor(id: string, name: string, description: string, icon: string, damage: number, bursts: number, range: number, crit: number, aim: number, recovery: number, cap: number, rangeMin: number, enc: number, maxDamage: number, totalAmmo: number) {
-        super(id, name, description, icon, damage, bursts, range, crit, aim, recovery, cap, 0, 0, rangeMin, enc, maxDamage, totalAmmo, false, 2.0);
+        super(id, name, description, icon, damage, bursts, range, crit, aim, recovery, cap, 0, 0, rangeMin, enc, maxDamage, totalAmmo, false, 2.0, 2); // penetration=2: bullets pass through 2 targets
     }
 }
 

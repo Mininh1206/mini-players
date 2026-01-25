@@ -4,7 +4,6 @@ import { SKILLS } from '@/logic/minitroopers/skills';
 import { Weapon, Grenade } from '@/logic/minitroopers/classes/Skill';
 import SkillTooltip from './SkillTooltip';
 
-
 interface TrooperProfileProps {
     trooper: Trooper;
     gold: number;
@@ -13,6 +12,7 @@ interface TrooperProfileProps {
     onUpdateTactics?: (tactics: any) => void;
     onSelectSkill?: (skill: any) => void;
     upgradeCostCalculator?: (level: number) => number;
+    onRename?: (name: string) => void;
 }
 
 const getHelmetIcon = (trooperClass: string) => {
@@ -31,12 +31,13 @@ const getHelmetIcon = (trooperClass: string) => {
     }
 };
 
-const TrooperProfile: React.FC<TrooperProfileProps & { onRename?: (name: string) => void }> = ({ trooper, gold, onUpgrade, t, onUpdateTactics, onSelectSkill, upgradeCostCalculator, onRename }) => {
+const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrade, t, onUpdateTactics, onSelectSkill, upgradeCostCalculator, onRename }) => {
     const defaultUpgradeCost = (trooper.level || 1) * 50;
     const upgradeCost = upgradeCostCalculator ? upgradeCostCalculator(trooper.level || 1) : defaultUpgradeCost;
     const canAfford = gold >= upgradeCost;
     const [isEditingName, setIsEditingName] = React.useState(false);
     const [tempName, setTempName] = React.useState(trooper.name);
+    const hpPercent = (trooper.attributes.hp / trooper.attributes.maxHp) * 100;
 
     const handleSaveName = () => {
         if (onRename && tempName.trim()) {
@@ -45,129 +46,163 @@ const TrooperProfile: React.FC<TrooperProfileProps & { onRename?: (name: string)
         setIsEditingName(false);
     };
 
+    // Level Up Choice UI
     if (trooper.pendingChoices && trooper.pendingChoices.length > 0) {
         return (
-            <div className="flex flex-col gap-4 p-6 bg-gray-800 rounded-2xl border border-gray-700 shadow-2xl items-center text-center">
-                <h2 className="text-2xl font-black text-white mb-2">Level Up!</h2>
-                <div className="grid grid-cols-2 gap-4 w-full max-w-2xl">
-                    {trooper.pendingChoices.map((skill, idx) => (
-                        <SkillTooltip key={idx} skill={skill} t={t}>
-                            <button
-                                onClick={() => onSelectSkill && onSelectSkill(skill)}
-                                className="bg-gray-900 p-4 rounded-xl border-2 border-gray-700 hover:border-blue-500 hover:bg-gray-800 transition group flex flex-col items-center gap-2 relative w-full h-full"
-                            >
-                                <div className="text-4xl group-hover:scale-110 transition-transform">{skill.icon}</div>
-                                <h3 className="text-lg font-bold text-white">{skill.name}</h3>
-                                <p className="text-xs text-gray-400">{skill.description}</p>
-                            </button>
-                        </SkillTooltip>
-                    ))}
+            <div className="relative p-6 rounded-2xl overflow-hidden bg-gradient-to-br from-blue-900/80 to-purple-900/80 backdrop-blur-xl border border-white/10 shadow-2xl">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent pointer-events-none" />
+                <div className="relative z-10">
+                    <h2 className="text-3xl font-black text-center bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent mb-6">
+                        🎖️ LEVEL UP!
+                    </h2>
+                    <p className="text-center text-gray-300 mb-6">Choose a new skill for {trooper.name}</p>
+                    <div className="grid grid-cols-2 gap-4">
+                        {trooper.pendingChoices.map((skill, idx) => (
+                            <SkillTooltip key={idx} skill={skill} t={t}>
+                                <button
+                                    onClick={() => onSelectSkill && onSelectSkill(skill)}
+                                    className="group relative bg-black/40 backdrop-blur-sm p-5 rounded-xl border border-white/10 hover:border-yellow-500/50 hover:bg-black/60 transition-all duration-300 flex flex-col items-center gap-3 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(234,179,8,0.2)]"
+                                >
+                                    <div className="text-5xl group-hover:scale-110 transition-transform duration-300">{skill.icon}</div>
+                                    <h3 className="text-lg font-bold text-white">{skill.name}</h3>
+                                    <p className="text-xs text-gray-400 text-center line-clamp-2">{skill.description}</p>
+                                </button>
+                            </SkillTooltip>
+                        ))}
+                    </div>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col gap-4 bg-gray-900 rounded-xl overflow-hidden h-full"> 
-           {/* Top Info Bar - Compact */}
-            <div className="flex items-center gap-4 bg-gray-800 p-3 border-b border-gray-700">
-                {/* Avatar */}
-                <div className="w-16 h-16 bg-gray-900 rounded-lg border-2 border-blue-500 flex items-center justify-center shrink-0 relative overflow-hidden">
-                    <span className="text-4xl">
-                        {getHelmetIcon(trooper.class)}
-                    </span>
-                    <div className="absolute -bottom-1 right-0 bg-blue-600 text-white px-1.5 py-0.5 rounded-tl text-[10px] font-bold">
-                        {trooper.level || 1}
+        <div className="flex flex-col h-full rounded-2xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border border-white/5 shadow-2xl">
+            
+            {/* Header - Glass Effect */}
+            <div className="relative p-4 bg-gradient-to-r from-blue-600/20 to-purple-600/20 border-b border-white/5">
+                <div className="absolute inset-0 backdrop-blur-sm" />
+                <div className="relative flex items-center gap-4">
+                    
+                    {/* Avatar */}
+                    <div className="relative shrink-0">
+                        <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 border-2 border-blue-500/50 flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.3)]">
+                            <span className="text-5xl">{getHelmetIcon(trooper.class)}</span>
+                        </div>
+                        <div className="absolute -bottom-1 -right-1 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-2 py-0.5 rounded-lg text-xs font-black shadow-lg">
+                            LV.{trooper.level || 1}
+                        </div>
                     </div>
-                </div>
 
-                {/* Name & Class & Upgrade */}
-                <div className="flex-1 flex flex-col justify-center">
-                    <div className="flex items-center gap-2">
+                    {/* Name & Class */}
+                    <div className="flex-1 min-w-0">
                         {isEditingName ? (
                             <div className="flex items-center gap-2">
                                 <input 
                                     type="text" 
                                     value={tempName} 
                                     onChange={(e) => setTempName(e.target.value)}
-                                    className="bg-gray-950 border border-blue-500 rounded px-2 py-0.5 text-lg font-black text-white outline-none w-48"
+                                    className="bg-black/50 border border-blue-500 rounded-lg px-3 py-1 text-xl font-black text-white outline-none w-full"
                                     autoFocus
                                     onBlur={handleSaveName}
                                     onKeyDown={(e) => e.key === 'Enter' && handleSaveName()}
                                 />
-                                <button onClick={handleSaveName} className="text-xs text-green-400 hover:text-green-300">💾</button>
                             </div>
                         ) : (
                             <h2 
-                                className="text-2xl font-black text-white tracking-tight cursor-pointer hover:text-blue-400 flex items-center gap-2"
+                                className="text-2xl font-black text-white truncate cursor-pointer hover:text-blue-400 transition-colors flex items-center gap-2"
                                 onClick={() => { setTempName(trooper.name); setIsEditingName(true); }}
-                                title="Click to rename"
                             >
-                                {trooper.name} <span className="text-xs opacity-30">✎</span>
+                                {trooper.name}
+                                <span className="text-xs opacity-30 hover:opacity-100">✎</span>
                             </h2>
                         )}
-                        
                         {trooper.class !== 'Recruit' && trooper.class !== 'Rat' && (
-                             <span className="text-xs font-bold text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded border border-yellow-400/20 uppercase tracking-widest">
+                            <span className="inline-block mt-1 text-[10px] font-bold text-yellow-400 bg-yellow-400/10 px-2 py-0.5 rounded border border-yellow-400/20 uppercase tracking-widest">
                                 {trooper.class}
                             </span>
                         )}
+                        
+                        {/* HP Bar */}
+                        <div className="mt-2">
+                            <div className="flex justify-between text-[10px] text-gray-400 mb-0.5">
+                                <span>HP</span>
+                                <span>{trooper.attributes.hp}/{trooper.attributes.maxHp}</span>
+                            </div>
+                            <div className="h-2 bg-black/50 rounded-full overflow-hidden">
+                                <div 
+                                    className={`h-full transition-all duration-500 rounded-full ${
+                                        hpPercent > 50 ? 'bg-gradient-to-r from-green-600 to-green-400' : 
+                                        hpPercent > 25 ? 'bg-gradient-to-r from-yellow-600 to-yellow-400' : 
+                                        'bg-gradient-to-r from-red-600 to-red-400'
+                                    }`}
+                                    style={{ width: `${hpPercent}%` }}
+                                />
+                            </div>
+                        </div>
                     </div>
+
+                    {/* Upgrade Button */}
+                    <button 
+                        onClick={() => onUpgrade(upgradeCost)}
+                        disabled={!canAfford}
+                        className={`shrink-0 px-5 py-3 font-black text-sm rounded-xl shadow-lg transition-all duration-300 flex flex-col items-center leading-tight ${
+                            canAfford 
+                                ? 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-black hover:scale-105 hover:shadow-[0_0_20px_rgba(251,191,36,0.4)]' 
+                                : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                        }`}
+                    >
+                        <span className="text-base">{t('upgrade')}</span>
+                        <span className="text-xs opacity-80 flex items-center gap-1">{upgradeCost} 💰</span>
+                    </button>
                 </div>
-                
-                {/* Upgrade Button - Compact */}
-                <button 
-                    onClick={() => onUpgrade(upgradeCost)}
-                    disabled={!canAfford}
-                    className={`px-4 py-2 font-black text-sm rounded-lg shadow-lg transform transition flex flex-col items-center leading-none ${canAfford ? 'bg-gradient-to-r from-yellow-600 to-yellow-500 hover:brightness-110 text-black' : 'bg-gray-700 text-gray-500 cursor-not-allowed'}`}
-                >
-                    <span>{t('upgrade')}</span>
-                    <span className="text-xs opacity-80">{upgradeCost} 💰</span>
-                </button>
             </div>
 
-            {/* Content Area - Skills Priority */}
-            <div className="flex-1 p-3 overflow-y-auto overflow-x-hidden">
-                {/* Skills Grid - Takes Priority */}
-                <div className="mb-4">
-                     <h3 className="text-xs font-bold text-gray-600 mb-2 uppercase tracking-wider flex items-center gap-2">
-                        <span className="w-full h-px bg-gray-800"></span>
-                        <span className="whitespace-nowrap">Skills & Equipment ({trooper.skills.length})</span>
-                        <span className="w-full h-px bg-gray-800"></span>
-                    </h3>
-                    <div className="grid grid-cols-8 sm:grid-cols-10 md:grid-cols-12 gap-1">
-                        {SKILLS.map((skill) => {
-                            const hasSkill = trooper.skills.some(s => s.id === skill.id);
-                            return (
-                                <div key={skill.id} className="aspect-square">
-                                    <SkillTooltip skill={skill} t={t} isLocked={!hasSkill}>
-                                        <div 
-                                            className={`w-full h-full flex items-center justify-center rounded border transition-all cursor-help ${hasSkill ? 'bg-gray-800 border-gray-600 hover:border-yellow-500 hover:bg-gray-750' : 'bg-gray-900/50 border-gray-800/50 opacity-20 grayscale'}`}
-                                        >
-                                            <div className="text-xl">{skill.icon}</div>
-                                        </div>
-                                    </SkillTooltip>
+            {/* Skills Section */}
+            <div className="flex-1 p-4 overflow-y-auto">
+                <div className="flex items-center gap-2 mb-3">
+                    <div className="h-px flex-1 bg-gradient-to-r from-transparent to-white/10" />
+                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Skills & Equipment</h3>
+                    <div className="h-px flex-1 bg-gradient-to-l from-transparent to-white/10" />
+                </div>
+                
+                <div className="grid grid-cols-8 sm:grid-cols-10 md:grid-cols-12 gap-1.5">
+                    {SKILLS.map((skill) => {
+                        const hasSkill = trooper.skills.some((s: Skill) => s.id === skill.id);
+                        return (
+                            <SkillTooltip key={skill.id} skill={skill} t={t} isLocked={!hasSkill}>
+                                <div 
+                                    className={`aspect-square flex items-center justify-center rounded-lg border cursor-help transition-all duration-200 ${
+                                        hasSkill 
+                                            ? 'bg-slate-800/80 border-slate-600/50 hover:border-yellow-500/50 hover:bg-slate-700/80 hover:scale-110 hover:shadow-lg' 
+                                            : 'bg-slate-900/30 border-slate-800/30 opacity-20 grayscale'
+                                    }`}
+                                >
+                                    <span className="text-lg">{skill.icon}</span>
                                 </div>
-                            );
-                        })}
-                    </div>
+                            </SkillTooltip>
+                        );
+                    })}
                 </div>
 
-                {/* Tactics (Level 6+) - Compact Row */}
-                <div className="bg-gray-950/30 rounded-lg border border-gray-800 p-3">
-                     <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Combat Tactics</h3>
-                        {trooper.level < 6 && <span className="text-[10px] text-red-900 bg-red-900/20 px-1 rounded">Lvl 6+</span>}
-                     </div>
-                     
+                {/* Tactics Section */}
+                <div className="mt-6 p-4 rounded-xl bg-black/30 border border-white/5">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
+                            ⚔️ Combat Tactics
+                        </h3>
+                        {trooper.level < 6 && (
+                            <span className="text-[10px] text-red-400 bg-red-400/10 px-2 py-0.5 rounded-full">🔒 Level 6</span>
+                        )}
+                    </div>
+                    
                     {trooper.level >= 6 ? (
-                        <div className="flex gap-4">
-                            <div className="flex-1">
-                                <label className="block text-xs text-gray-600 mb-0.5">Priority</label>
+                        <div className="grid grid-cols-3 gap-3">
+                            <div>
+                                <label className="block text-[10px] text-gray-500 mb-1 uppercase">Priority</label>
                                 <select 
                                     value={trooper.tactics?.priority || 'closest'}
                                     onChange={(e) => onUpdateTactics && onUpdateTactics({ ...trooper.tactics, priority: e.target.value as any })}
-                                    className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none hover:bg-gray-800 transition"
+                                    className="w-full bg-slate-900/80 border border-slate-700 rounded-lg px-3 py-2 text-xs text-gray-300 focus:border-blue-500 outline-none hover:bg-slate-800 transition"
                                 >
                                     <option value="closest">Closest</option>
                                     <option value="weakest">Weakest</option>
@@ -175,12 +210,12 @@ const TrooperProfile: React.FC<TrooperProfileProps & { onRename?: (name: string)
                                     <option value="random">Random</option>
                                 </select>
                             </div>
-                            <div className="flex-1">
-                                <label className="block text-xs text-gray-600 mb-0.5">Target</label>
+                            <div>
+                                <label className="block text-[10px] text-gray-500 mb-1 uppercase">Target</label>
                                 <select 
                                     value={trooper.tactics?.targetPart || 'any'}
                                     onChange={(e) => onUpdateTactics && onUpdateTactics({ ...trooper.tactics, targetPart: e.target.value as any })}
-                                    className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none hover:bg-gray-800 transition"
+                                    className="w-full bg-slate-900/80 border border-slate-700 rounded-lg px-3 py-2 text-xs text-gray-300 focus:border-blue-500 outline-none hover:bg-slate-800 transition"
                                 >
                                     <option value="any">Any</option>
                                     <option value="head">Head</option>
@@ -189,26 +224,25 @@ const TrooperProfile: React.FC<TrooperProfileProps & { onRename?: (name: string)
                                     <option value="leg">Leg</option>
                                 </select>
                             </div>
-                            <div className="flex-1">
-                                <label className="block text-xs text-gray-600 mb-0.5">Most Wanted</label>
+                            <div>
+                                <label className="block text-[10px] text-gray-500 mb-1 uppercase">Weapon</label>
                                 <select 
                                     value={trooper.tactics?.favoriteWeaponId || ''}
                                     onChange={(e) => onUpdateTactics && onUpdateTactics({ ...trooper.tactics, favoriteWeaponId: e.target.value || undefined })}
-                                    className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-300 focus:border-blue-500 outline-none hover:bg-gray-800 transition"
+                                    className="w-full bg-slate-900/80 border border-slate-700 rounded-lg px-3 py-2 text-xs text-gray-300 focus:border-blue-500 outline-none hover:bg-slate-800 transition"
                                 >
-                                    <option value="">None (Auto)</option>
-                                    {trooper.skills.filter(s => {
-                                        // Simple duck typing for weapons (has capacity attr in SKILLS def)
+                                    <option value="">Auto</option>
+                                    {trooper.skills.filter((s: Skill) => {
                                         const def = SKILLS.find(d => d.id === s.id);
                                         return def && (def as any).capacity !== undefined && !(def instanceof Grenade);
-                                    }).map(w => (
+                                    }).map((w: Skill) => (
                                         <option key={w.id} value={w.id}>{w.name}</option>
                                     ))}
                                 </select>
                             </div>
                         </div>
                     ) : (
-                        <div className="text-xs text-gray-700 italic text-center py-2">
+                        <div className="text-xs text-gray-600 italic text-center py-4">
                             Unlock advanced AI tactics at Level 6
                         </div>
                     )}

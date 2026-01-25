@@ -911,9 +911,12 @@ const Saboteur: SkillImplementation = {
                  const victimIndex = Math.floor(Math.random() * enemies.length);
                  const victim = enemies[victimIndex];
                  
-                 // Get valid weapons to jam (Damage > 0, not unarmed)
-                 // Original game: Can jam any weapon usually.
-                 const weapons = victim.skills.filter(s => (s as any).damage !== undefined); // Simple filter
+                 // Get valid weapons to jam (Ranged only - melee can't be sabotaged)
+                  const weapons = victim.skills.filter(s => 
+                      (s as any).damage !== undefined && 
+                      (s as any).range !== undefined && 
+                      (s as any).range > 1 // Exclude melee (range 1)
+                  );
                  if (weapons.length > 0) {
                      // Pick a weapon that isn't already jammed
                      if (!context.jammedWeapons.has(victim.id)) context.jammedWeapons.set(victim.id, []);

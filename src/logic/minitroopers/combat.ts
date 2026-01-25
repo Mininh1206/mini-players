@@ -689,6 +689,68 @@ export function resolveWeaponShot(actor: Trooper, target: Trooper, weapon: Weapo
                     message: `${actor.name} hits ${actualTarget.name} in ${hitLocation} for ${finalDamage}${isCrit ? ' (CRIT!)' : ''}`,
                     data: { weaponId: weapon.id }
                 });
+
+                // --- BULLET PENETRATION ---
+                const weaponPenetration = (weapon as any).penetration || 0;
+                if (weaponPenetration > 0 && !actualTarget.isDead) {
+                    // Find enemies BEHIND the actualTarget in the line of fire
+                    const penetrationTargets: Trooper[] = [];
+                    const actorPos = actor.position || { x: 0, y: 0 };
+                    const targetPos = actualTarget.position || { x: 0, y: 0 };
+                    
+                    allTroopers
+                        .filter(t => t.id !== actor.id && t.id !== actualTarget.id && !t.isDead && t.team !== actor.team)
+                        .forEach(candidate => {
+                            const candPos = candidate.position || { x: 0, y: 0 };
+                            // Check if candidate is beyond target in same direction
+                            const candDist = Math.sqrt(Math.pow(candPos.x - actorPos.x, 2) + Math.pow(candPos.y - actorPos.y, 2));
+                            const targetDist = Math.sqrt(Math.pow(targetPos.x - actorPos.x, 2) + Math.pow(targetPos.y - actorPos.y, 2));
+                            
+                            if (candDist > targetDist) {
+                                // Check if in firing line (perpendicular distance < 30px)
+                                const dx = candPos.x - actorPos.x;
+                                const dy = candPos.y - actorPos.y;
+                                const dot = dx * dirX + dy * dirY;
+                                const perpX = candPos.x - (actorPos.x + dirX * dot);
+                                const perpY = candPos.y - (actorPos.y + dirY * dot);
+                                const perpDist = Math.sqrt(perpX * perpX + perpY * perpY);
+                                
+                                if (perpDist < 30) {
+                                    penetrationTargets.push(candidate);
+                                }
+                            }
+                        });
+                    
+                    // Sort by distance (closest first)
+                    penetrationTargets.sort((a, b) => {
+                        const aDist = Math.sqrt(Math.pow((a.position?.x || 0) - actorPos.x, 2) + Math.pow((a.position?.y || 0) - actorPos.y, 2));
+                        const bDist = Math.sqrt(Math.pow((b.position?.x || 0) - actorPos.x, 2) + Math.pow((b.position?.y || 0) - actorPos.y, 2));
+                        return aDist - bDist;
+                    });
+                    
+                    // Apply penetration damage (reduced by 50% per target)
+                    let remainingPen = weaponPenetration;
+                    let dmgMult = 0.5;
+                    for (const penTarget of penetrationTargets) {
+                        if (remainingPen <= 0) break;
+                        
+                        let penDamage = Math.floor(finalDamage * dmgMult);
+                        penDamage = Math.max(1, penDamage - (penTarget.attributes.armor || 0));
+                        
+                        penTarget.attributes.hp = Math.max(0, penTarget.attributes.hp - penDamage);
+                        if (penTarget.attributes.hp === 0) penTarget.isDead = true;
+                        
+                        log.push({
+                            time, actorId: actor.id, actorName: actor.name, targetId: penTarget.id, targetName: penTarget.name,
+                            action: 'attack', damage: penDamage, 
+                            message: `Bullet penetrates! ${penTarget.name} hit for ${penDamage}`,
+                            data: { weaponId: weapon.id }
+                        });
+                        
+                        remainingPen--;
+                        dmgMult *= 0.5;
+                    }
+                }
             }
 
         } else {

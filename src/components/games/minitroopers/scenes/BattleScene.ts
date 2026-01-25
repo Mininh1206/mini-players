@@ -452,16 +452,14 @@ export class BattleScene extends Phaser.Scene {
                  actor.setData(`ammo_${weaponId}`, currentAmmo + 1);
              }
         } else if (log.action === 'switch_weapon') {
-             // Parse message for simplicity or add to log? 
-             // Log message: "switches to [WeaponName]". Hard to parse ID.
-             // Hack: We need `weaponId` in the log.
-             // For now, let's skip strict ammo visual sync updates based on switch unless we fix log.
-             // But we CAN fix log in combat.ts to include `data: { weaponId: ... }`.
-             // As this is a task constraint, let's try to get live state from simulation? No, simulation is pre-calc.
-             // Okay, let's rely on initial state.
-             // We can't easily visualize ammo perfectly without weaponId in log.
-             // BUT user asked to fix it.
-             // Let's assume we need to update `combat.ts` to include metadata in logs.
+             // Just update stored weapon ID (no visual icon on sprite)
+             const newWeaponId = log.data?.weaponId;
+             if (newWeaponId) {
+                 actor.setData('currentWeaponId', newWeaponId);
+             }
+             this.showFloatingText(actor.x, actor.y - 40, this.translations['switch_weapon'] || 'SWITCH!', '#ffaa00');
+             onComplete();
+             return;
         }
 
         if (log.action === 'use_equipment') {
@@ -626,10 +624,10 @@ export class BattleScene extends Phaser.Scene {
                  if ((s as any).capacity) { // Duck typing Weapon
                      container.setData(`ammo_${s.id}`, trooper.ammo?.[s.id] ?? (s as any).capacity);
                  }
-                 // Track current weapon?
              });
              container.setData('currentWeaponId', trooper.currentWeaponId);
         }
+
 
         this.troopers.set(trooper.id, container);
 

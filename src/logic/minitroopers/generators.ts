@@ -83,6 +83,10 @@ export const generateRandomTrooper = (targetLevel: number = 1): Trooper => {
         }
     });
 
+    // Set first weapon as currentWeaponId
+    const firstWeapon = skills.find(s => (s as any).capacity !== undefined && (s as any).damage !== undefined);
+    const currentWeaponId = firstWeapon?.id;
+
     const data: TrooperData = {
         id: uuidv4(),
         name,
@@ -94,6 +98,7 @@ export const generateRandomTrooper = (targetLevel: number = 1): Trooper => {
         level: currentLevel,
         cooldown: 0,
         ammo,
+        currentWeaponId,
         disarmed: [],
         wounds: { head: false, chest: false, leftArm: false, rightArm: false, leftLeg: false, rightLeg: false },
         tactics: {
@@ -101,7 +106,9 @@ export const generateRandomTrooper = (targetLevel: number = 1): Trooper => {
             targetPart: 'any'
         }
     };
-    return instantiateTrooper(data);
+    const trooper = instantiateTrooper(data);
+    trooper.recalculateStats(); // Normalize stats, inject Fists if needed
+    return trooper;
 };
 
 export const generateRat = (level: number = 1): Trooper => {
@@ -110,7 +117,7 @@ export const generateRat = (level: number = 1): Trooper => {
     // Scale Rat stats specifically - BALANCED to be less OP (Original: 10HP)
     baseStats.maxHp += (level - 1) * 2; // Was 5, now 2. Slower scaling.
     baseStats.hp = baseStats.maxHp;
-    baseStats.damage += Math.floor((level - 1) * 0.5); // reduced damage scaling
+    // Rats use only Fists for damage (injected via recalculateStats)
 
     const skills: any[] = []; // Rats don't use standard weapons/skills yet, simple melee
     // Potentially add "Bite" weapon or similar if strictly needed by combat system, 
@@ -135,7 +142,9 @@ export const generateRat = (level: number = 1): Trooper => {
             targetPart: 'any'
         }
     };
-    return new Rat(data);
+    const trooper = new Rat(data);
+    trooper.recalculateStats();
+    return trooper;
 };
 
 export const generateSpecificTrooper = (trooperClass: string, level: number): Trooper => {
@@ -187,6 +196,10 @@ export const generateSpecificTrooper = (trooperClass: string, level: number): Tr
         }
     });
 
+    // Set first weapon as currentWeaponId
+    const firstWeapon = skills.find(s => (s as any).capacity !== undefined && (s as any).damage !== undefined);
+    const currentWeaponId = firstWeapon?.id;
+
     const data: TrooperData = {
         id: uuidv4(),
         name,
@@ -198,6 +211,7 @@ export const generateSpecificTrooper = (trooperClass: string, level: number): Tr
         level,
         cooldown: 0,
         ammo,
+        currentWeaponId,
         disarmed: [],
         wounds: { head: false, chest: false, leftArm: false, rightArm: false, leftLeg: false, rightLeg: false },
         tactics: {
@@ -205,7 +219,9 @@ export const generateSpecificTrooper = (trooperClass: string, level: number): Tr
             targetPart: 'any'
         }
     };
-    return instantiateTrooper(data);
+    const trooper = instantiateTrooper(data);
+    trooper.recalculateStats(); // Normalize stats, inject Fists if needed
+    return trooper;
 };
 
 // Helper factory
