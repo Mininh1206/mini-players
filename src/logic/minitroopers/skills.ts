@@ -60,16 +60,16 @@ export const SKILLS: Skill[] = [
 
     // Weapons - Rifles
     // Sniper: Dam:4, Rng:100, Crit:15, Aim:150, Rec:100, Cap:1, Shots:2
-    new SniperRifle('sniper_rifle', 'Sniper Rifle', 'Long range precision weapon.', '🎯', 4, 1, 100, 15, 150, 100, 1, 30, 0, 4, 2),
+    new SniperRifle('sniper_rifle', 'Sniper Rifle', 'Long range precision weapon.', '🎯', 4, 1, 100, 15, 150, 100, 1, 5, 0, 4, 2),
     // CK: Dam:3, Rng:100, Crit:25, Aim:150, Rec:65, Cap:6, Shots:12, Heavy (Enc 20)
-    new SniperRifle('ck_magellan', 'CK-Magellan', 'Advanced sniper rifle.', '🔭', 3, 1, 100, 25, 150, 65, 6, 20, 20, 3, 12),
+    new SniperRifle('ck_magellan', 'CK-Magellan', 'Advanced sniper rifle.', '🔭', 3, 1, 100, 25, 150, 65, 6, 20, 20, 5, 12),
     // Jungle: Dam:5, Rng:100, Crit:20, Aim:120, Rec:100, Cap:2, Shots:4, Heavy
     new SniperRifle('lizaro_jungle', 'Lizaro Jungle', 'Camouflaged sniper rifle.', '🌿', 5, 1, 100, 20, 120, 100, 2, 30, 20, 5, 4),
     // MOS: Dam:6-7, Rng:100, Crit:25, Aim:150, Rec:120, Cap:3, Shots:6, Heavy
-    new SniperRifle('mos_teck', 'MOS-TECK', 'High tech sniper rifle.', '🦾', 6, 1, 100, 25, 150, 120, 3, 30, 20, 7, 6),
+    new SniperRifle('mos_teck', 'MOS-TECK', 'High tech sniper rifle.', '🦾', 6, 1, 100, 25, 150, 120, 3, 30, 20, 5, 6),
     // Sparrow: Dam:3, Rng:100, Crit:50, Aim:300, Rec:100, Cap:1, Shots:4, Heavy
-    new SniperRifle('sparrowhawk', 'SparrowHawk', 'Lightweight sniper rifle.', '🦅', 3, 1, 100, 50, 300, 100, 1, 30, 20, 3, 4),
-
+    new SniperRifle('sparrowhawk', 'SparrowHawk', 'Lightweight sniper rifle.', '🦅', 3, 1, 100, 50, 300, 100, 1, 30, 20, 5, 4),
+    
     // Weapons - Machine Guns
     // Comanche: Dam:3-4, Bur:6, Rng:6, Crit:5, Aim:90, Rec:60, Cap:18, Shots:36, Heavy
     new MachineGun('comanche_auto', 'Comanche Auto', 'Automatic heavy weapon.', '🚙', 3, 6, 6, 5, 90, 60, 18, 0, 20, 4, 36),
@@ -82,13 +82,13 @@ export const SKILLS: Skill[] = [
     
     // Weapons - Launchers
     // Bazooka: Dam:8-15, Rng:100, Crit:1, Aim:100, Rec:100, Cap:1, Shots:2, Heavy, Secure Zone (Min 30)
-    new Launcher('bazooka', 'Bazooka M1', 'Standard bazooka.', '🚀', 8, 1, 100, 1, 100, 100, 1, 2, 50, 30, 20, 15, 2),
+    new Launcher('bazooka', 'Bazooka M1', 'Standard bazooka.', '🚀', 8, 1, 100, 1, 100, 100, 1, 2, 50, 5, 20, 15, 2),
     // BazookaM25: Dam:6-12, Rng:100, Crit:1, Aim:80, Rec:120, Cap:3, Shots:6, Heavy
-    new Launcher('bazooka_m25', 'Bazooka M25', 'Advanced bazooka.', '🚀', 6, 1, 100, 1, 80, 120, 3, 2, 50, 30, 20, 12, 6),
+    new Launcher('bazooka_m25', 'Bazooka M25', 'Advanced bazooka.', '🚀', 6, 1, 100, 1, 80, 120, 3, 2, 50, 5, 20, 12, 6),
     // Infernal: Dam:14-28, Rng:100, Crit:1, Aim:95, Rec:150, Cap:1, Shots:1, Heavy
-    new Launcher('infernal_tube', 'Infernal Tube', 'Fires incendiary rockets.', '🔥', 14, 1, 100, 1, 95, 150, 1, 2, 50, 30, 20, 28, 1),
+    new Launcher('infernal_tube', 'Infernal Tube', 'Fires incendiary rockets.', '🔥', 14, 1, 100, 1, 95, 150, 1, 2, 50, 5, 20, 28, 1),
     // Rocket: Dam:8-15, Rng:100, Crit:1, Aim:80, Rec:120, Cap:1, Shots:3
-    new Launcher('rocket_launcher', 'Rocket Launcher', 'Rapid fire rockets.', '🚀', 8, 1, 100, 1, 80, 120, 1, 2, 50, 30, 0, 15, 3),
+    new Launcher('rocket_launcher', 'Rocket Launcher', 'Rapid fire rockets.', '🚀', 8, 1, 100, 1, 80, 120, 1, 2, 50, 5, 0, 15, 3),
 
     // Weapons - Melee
     // Knife: Dam:2-4, Rng:1, Crit:10, Aim:120, Rec:40

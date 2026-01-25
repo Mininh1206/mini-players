@@ -32,6 +32,6 @@
         "name": "Mini Troopers",
         "normalized-name": "minitroopers",
         "description": "Juego de estrategia inspirado en Mini Troopers.",
-        "visible": false
+        "visible": true
     }
 ]

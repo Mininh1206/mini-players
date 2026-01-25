@@ -366,7 +366,7 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
                             actorId: actor.id, 
                             actorName: actor.name, 
                             action: 'switch_weapon', 
-                            message: `${actor.name} switches to Fists (All weapons jammed!)`,
+                            message: `${actor.name} switches to Fists (Weapons lost or jammed!)`,
                             data: { weaponId: null }
                          });
                          actor.actionTimer += 100;
@@ -490,8 +490,14 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
                             
                             const finalSpeed = Math.max(1, moveSpeed * speedMod);
                             
+                            
                             actor.position!.x += Math.cos(escapeAngle) * finalSpeed;
                             actor.position!.y += Math.sin(escapeAngle) * finalSpeed;
+
+                            // Clamp values to map bounds
+                            actor.position!.x = Math.max(0, Math.min(1000, actor.position!.x));
+                            actor.position!.y = Math.max(0, Math.min(400, actor.position!.y));
+
                             actor.isMoving = true;
                             log.push({ time, actorId: actor.id, actorName: actor.name, action: 'move', targetPosition: { ...actor.position! }, message: `${actor.name} retreats to safe distance.` });
                             actor.recoveryTime = 10;
