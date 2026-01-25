@@ -93,6 +93,7 @@ export const SKILLS: Skill[] = [
     // Weapons - Melee
     // Knife: Dam:2-4, Rng:1, Crit:10, Aim:120, Rec:40
     new Melee('knife', 'Knife', 'Close quarters combat.', '🔪', 2, 1, 1, 10, 120, 40, 999, 0, 0, 0, 4, 999),
+    new Melee('fists', 'Fists', 'Good old knuckle sandwich.', '👊', 1, 1, 1, 5, 100, 20, 999, 0, 0, 0, 3, 999),
 
     // Ammunition
     new Equipment('explosive_shells', 'Explosive Shells', 'Bullets explode on impact.', '💥', 99),

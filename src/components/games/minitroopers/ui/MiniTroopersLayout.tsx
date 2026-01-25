@@ -240,8 +240,10 @@ const MiniTroopersLayout: React.FC = () => {
                     troopers: prev.troopers.map(t => {
                         if (t.id === trooperId) {
                             // Use centralized leveler logic
-                            const choices = getSkillChoices(t);
-                            const clone = t instanceof Trooper ? t.clone() : instantiateTrooper(t);
+                            // Use centralized leveler logic
+                            const instance = t instanceof Trooper ? t : instantiateTrooper(t);
+                            const choices = getSkillChoices(instance);
+                            const clone = instance.clone();
                             clone.pendingChoices = choices;
                             return clone;
                         }
@@ -260,9 +262,10 @@ const MiniTroopersLayout: React.FC = () => {
                 ...prev,
                 troopers: prev.troopers.map(t => {
                     if (t.id === trooperId) {
-                        const upgradedData = applyLevelUp(t, skill);
+                        const instance = t instanceof Trooper ? t : instantiateTrooper(t);
+                        const upgradedData = applyLevelUp(instance, skill);
                         // Ensure stat consistency and clear pending choices
-                        const instance = instantiateTrooper(upgradedData);
+                        const newInstance = instantiateTrooper(upgradedData);
                         instance.recalculateStats();
                         instance.pendingChoices = undefined;
                         return instance;
@@ -405,7 +408,7 @@ const MiniTroopersLayout: React.FC = () => {
                 <div className={`flex-1 bg-gray-900 p-6 lg:p-8 relative flex flex-col ${currentView === 'SIMULATION' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
                     <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#4b5563 1px, transparent 1px)', backgroundSize: '24px 24px' }}></div>
 
-                    <div className="relative z-10 flex-1">
+                    <div className="relative z-10 flex-1 flex flex-col min-h-0">
                         {currentView === 'HQ' && selectedTrooper && (
                             <div className="max-w-5xl mx-auto">
                                 <h2 className="text-3xl font-black mb-8 text-white tracking-tight flex items-center gap-4">

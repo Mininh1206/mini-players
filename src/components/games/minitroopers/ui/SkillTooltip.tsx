@@ -7,10 +7,11 @@ interface SkillTooltipProps {
     skill: Skill;
     t: (key: string) => string;
     isLocked?: boolean;
+    weaponStatus?: 'equipped' | 'unequipped' | 'sabotaged';
     children?: React.ReactNode;
 }
 
-const SkillTooltip: React.FC<SkillTooltipProps> = ({ skill, t, isLocked, children }) => {
+const SkillTooltip: React.FC<SkillTooltipProps> = ({ skill, t, isLocked, weaponStatus, children }) => {
     const [isVisible, setIsVisible] = useState(false);
     const [position, setPosition] = useState({ top: 0, left: 0 });
     const triggerRef = useRef<HTMLDivElement>(null);
@@ -48,6 +49,19 @@ const SkillTooltip: React.FC<SkillTooltipProps> = ({ skill, t, isLocked, childre
                 {name} {isLocked ? '(Locked)' : ''}
             </div>
             <div className="text-gray-300 mb-2 italic">{description}</div>
+            
+            {/* Weapon Status Badge */}
+            {isWeapon && weaponStatus && (
+                <div className={`inline-block text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded mb-2 ${
+                    weaponStatus === 'equipped' ? 'bg-green-600 text-white' :
+                    weaponStatus === 'sabotaged' ? 'bg-red-600 text-white animate-pulse' :
+                    'bg-gray-700 text-gray-400'
+                }`}>
+                    {weaponStatus === 'equipped' && '✓ EQUIPPED'}
+                    {weaponStatus === 'sabotaged' && '⚠ SABOTAGED'}
+                    {weaponStatus === 'unequipped' && '— STOWED'}
+                </div>
+            )}
             
             {isWeapon && (
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs border-t border-gray-700 pt-2 mt-2">

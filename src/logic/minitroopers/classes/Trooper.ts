@@ -100,6 +100,19 @@ export abstract class Trooper implements TrooperData {
 
         this.attributes.maxHp = newMaxHp;
         this.attributes.hp = newMaxHp; // Fully heal on recalc? usage implies yes for generation.
+
+        // Ensure Fists exist if no Melee weapon
+        const hasMelee = this.skills.some(s => {
+             const def = ALL_SKILLS_DEFS.find((d: { id: any; }) => d.id === s.id);
+             return def instanceof Weapon && (def as any).range === 1; // Melee check
+        });
+
+        if (!hasMelee) {
+             const fists = ALL_SKILLS_DEFS.find((s: { id: string; }) => s.id === 'fists');
+             if (fists && !this.skills.some(s => s.id === 'fists')) {
+                 this.skills.push(fists);
+             }
+        }
     }
 
     public getPower(): number {
@@ -225,15 +238,23 @@ export abstract class Trooper implements TrooperData {
                    actionTaken = true;
               } else {
                   // Fists
-                  delete this.currentWeaponId;
-                  equippedWeapon = undefined;
-                   log.push({ 
-                      time, actorId: this.id, actorName: this.name, action: 'switch_weapon', 
-                      message: `${this.name} switches to Fists (Weapons lost or jammed!)`,
-                      data: { weaponId: null }
-                   });
-                   this.actionTimer! += 100;
-                   actionTaken = true;
+                  const fists = this.skills.find(s => s.id === 'fists');
+                  if (fists) {
+                       this.currentWeaponId = fists.id;
+                       equippedWeapon = fists as Weapon;
+                       log.push({ 
+                          time, actorId: this.id, actorName: this.name, action: 'switch_weapon', 
+                          message: `${this.name} switches to Fists (Weapons lost or jammed!)`,
+                          data: { weaponId: fists.id }
+                       });
+                       this.actionTimer! += 100;
+                       actionTaken = true;
+                  } else {
+                       // Truly unarmed (shouldn't happen with injection)
+                       delete this.currentWeaponId;
+                       equippedWeapon = undefined;
+                       actionTaken = true; // Skip turn or flee?
+                  }
               }
         }
 

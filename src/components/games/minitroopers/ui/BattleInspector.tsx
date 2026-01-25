@@ -1,12 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
-import type { Trooper } from '@/logic/minitroopers/types';
+import type { TrooperData, Skill } from '@/logic/minitroopers/types';
 import SkillTooltip from './SkillTooltip';
 import { Weapon } from '@/logic/minitroopers/classes/Skill';
 import { getSkillDefinition } from '@/logic/minitroopers/utils';
 
 interface BattleInspectorProps {
-    trooper: Trooper;
+    trooper: TrooperData;
     onClose: () => void;
     t: (key: string) => string;
 }
@@ -71,8 +71,13 @@ const BattleInspector: React.FC<BattleInspectorProps> = ({ trooper, onClose, t }
                             // Check jamming (Synced from context to trooper.jammedWeapons)
                             const isJammed = trooper.jammedWeapons?.includes(weapon.id); 
 
+                            // Compute status for tooltip
+                            const weaponStatus: 'equipped' | 'unequipped' | 'sabotaged' = 
+                                isJammed ? 'sabotaged' : 
+                                isEquipped ? 'equipped' : 'unequipped';
+
                             return (
-                                <SkillTooltip key={s.id} skill={weapon} t={t}>
+                                <SkillTooltip key={s.id} skill={weapon} t={t} weaponStatus={weaponStatus}>
                                     <div 
                                         className={`relative flex items-center justify-between p-2 rounded text-xs cursor-help transition-all duration-300 border-l-4
                                             ${isEquipped 

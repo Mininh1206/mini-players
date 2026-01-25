@@ -37,56 +37,77 @@ const BattleSimulatorView: React.FC<BattleSimulatorViewProps> = ({
     };
 
     return (
-        <div className="h-full flex flex-row w-full overflow-hidden bg-black">
-            {/* Game Area */}
-            <div className="flex-1 relative h-full">
-                {/* Overlay UI: Back Button & Header */}
-                <div className="absolute top-4 left-4 z-50 flex gap-4 items-center" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+        <div className="h-full w-full flex flex-col bg-gray-950 overflow-hidden font-vt323">
+            {/* Top Toolbar */}
+            <div className="h-16 shrink-0 bg-gray-900 border-b border-gray-800 flex items-center justify-between px-6 shadow-md z-10">
+                <div className="flex items-center gap-4">
                     <button 
                         onClick={onClose} 
-                        className="bg-gray-800/80 hover:bg-gray-700 backdrop-blur text-white px-4 py-2 rounded font-bold border border-gray-600 shadow-lg transition"
+                        className="pixel-btn bg-gray-700 hover:bg-gray-600 border-gray-500 text-gray-200 text-lg py-1 flex items-center gap-2 transition"
                     >
-                        ← {backLabel === 'Back' ? t('back_to_editor') : (backLabel === 'Back to Arena' ? t('back_to_arena') : backLabel)}
+                         <span className="text-xl">←</span> {backLabel === 'Back' ? t('back_to_editor') : (backLabel === 'Back to Arena' ? t('back_to_arena') : backLabel)}
                     </button>
-                    {/* Optional Result Badge if we want it floating */}
-                    <div className={`px-4 py-2 rounded font-bold shadow-lg backdrop-blur border ${
-                        battleResult.winner === 'A' 
-                            ? 'bg-green-900/80 text-green-100 border-green-700' 
-                            : 'bg-red-900/80 text-red-100 border-red-700'
-                    }`}>
-                        {battleResult.winner === 'A' ? t('victory') : t('defeat')}
-                    </div>
+                    <div className="h-8 w-px bg-gray-700 mx-2"></div>
+                    <h2 className="text-2xl text-gray-300 font-bold uppercase tracking-wide">{title}</h2>
                 </div>
-
-                <MiniTroopersGame 
-                    battleResult={battleResult}
-                    mySquad={mySquad}
-                    opponentSquad={opponentSquad}
-                    translations={translations}
-                />
+                
+                {/* Result Badge */}
+                <div className={`px-6 py-2 rounded-sm border-2 text-xl font-bold tracking-wider shadow-lg ${
+                    battleResult.winner === 'A' 
+                        ? 'bg-green-900/40 text-green-400 border-green-500/50' 
+                        : 'bg-red-900/40 text-red-400 border-red-500/50'
+                }`}>
+                    {battleResult.winner === 'A' ? t('victory') : t('defeat')}
+                </div>
             </div>
 
-            {/* Sidebar Log */}
-            <div className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col shrink-0">
-                <div className="p-3 border-b border-gray-800 bg-gray-950 flex justify-between items-center">
-                    <span className="font-bold text-gray-400 uppercase text-lg font-vt323">{t('combat_log')}</span>
-                    <span className="text-sm text-gray-600">{(t('events_count') as string).replace('{{count}}', String(battleResult.log.length))}</span>
+            {/* Main Content Area - Fills remaining height */}
+            <div className="flex-1 min-h-0 flex flex-row relative">
+                
+                {/* Game Canvas Container */}
+                <div className="flex-1 relative bg-black shadow-inner">
+                    <MiniTroopersGame 
+                        battleResult={battleResult}
+                        mySquad={mySquad}
+                        opponentSquad={opponentSquad}
+                        translations={translations}
+                    />
+                    
+                    {/* Overlay Text (optional/if scene doesn't render it) */}
                 </div>
-                <div className="flex-1 min-h-0 overflow-y-auto p-4 font-vt323 text-sm text-gray-400">
-                    {battleResult.log.map((entry, idx) => {
-                        const isMyUnit = entry.actorId && mySquad.some(s => s.id === entry.actorId);
-                        return (
-                            <div key={idx} className="mb-1 border-b border-gray-800/50 pb-1 last:border-0 flex gap-2 hover:bg-gray-800/50 rounded px-1 -mx-1 transition-colors">
-                                <span className="text-yellow-600 shrink-0 opacity-70">[{entry.time.toFixed(1)}s]</span>
-                                <div className="flex-1">
-                                    <span className={`font-bold ${isMyUnit ? 'text-green-400' : 'text-red-400'}`}>
-                                        {entry.actorName}
-                                    </span>
-                                    <span className="text-gray-300 ml-1 opacity-90">{entry.message}</span>
+
+                {/* Sidebar Log - Fixed width */}
+                <div className="w-96 bg-gray-900 border-l border-gray-800 flex flex-col shrink-0 shadow-2xl relative z-20">
+                    <div className="p-4 border-b border-gray-800 bg-gray-950/50 flex justify-between items-center backdrop-blur-sm">
+                        <span className="font-bold text-gray-300 uppercase text-xl tracking-wider">{t('combat_log')}</span>
+                        <span className="text-base text-gray-500 bg-gray-800 px-2 py-0.5 rounded border border-gray-700 font-mono">
+                            {(t('events_count') as string).replace('{{count}}', String(battleResult.log.length))}
+                        </span>
+                    </div>
+                    
+                    {/* Log List - Scrolls independently */}
+                    <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-2 bg-gray-900 scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-transparent">
+                        {battleResult.log.map((entry, idx) => {
+                            const isMyUnit = entry.actorId && mySquad.some(s => s.id === entry.actorId);
+                            return (
+                                <div key={idx} className="border-b border-gray-800/50 pb-2 last:border-0 hover:bg-white/5 p-2 rounded transition-colors group">
+                                    <div className="flex items-baseline gap-2 mb-0.5">
+                                        <span className="text-yellow-600 font-mono text-base shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
+                                            [{entry.time.toFixed(1)}s]
+                                        </span>
+                                        <span className={`font-bold text-lg leading-none ${isMyUnit ? 'text-green-400' : 'text-red-400'}`}>
+                                            {entry.actorName}
+                                        </span>
+                                    </div>
+                                    <div className="text-gray-400 text-lg leading-tight pl-2 border-l-2 border-gray-800 group-hover:border-gray-600 transition-colors">
+                                        {entry.message}
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })}
+                        {/* Spacer for bottom scroll */}
+                        <div className="h-4"></div>
+                    </div>
                 </div>
             </div>
         </div>
