@@ -53,46 +53,52 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
         src="https://cdn.ampproject.org/v0/amp-auto-ads-0.1.js">
 </script>
   </head>
-  <body class="min-h-screen w-full flex flex-col relative">
+    <body class="min-h-screen w-full flex flex-col relative bg-[#1a1a2e] text-[#eaeaea] font-sans selection:bg-[#e94560]/30 overflow-x-hidden">
+        <div class="crt-overlay"></div>
     <amp-auto-ads type="adsense"
         data-ad-client="ca-pub-3615553983953486">
 </amp-auto-ads>
     
     <!-- Mobile Incompatibility Overlay -->
-    <div class="fixed inset-0 z-50 bg-gray-900 text-white flex flex-col items-center justify-center p-8 text-center lg:hidden">
-      <span class="icon-[mdi--monitor-cellphone] text-6xl mb-6 text-red-500"></span>
-      <h1 class="text-3xl font-bold mb-4">Dispositivo No Compatible</h1>
-      <p class="text-lg text-gray-300">
+    <div class="fixed inset-0 z-50 bg-[#16213e] text-white flex flex-col items-center justify-center p-8 text-center lg:hidden border-4 border-[#e94560]">
+      <span class="icon-[mdi--monitor-cellphone] text-6xl mb-6 text-[#e94560]"></span>
+      <h1 class="text-3xl font-bold mb-4 font-press-start leading-relaxed">Dispositivo No Compatible</h1>
+      <p class="text-lg text-gray-300 font-vt323 leading-relaxed">
         Lo sentimos, MiniPlayers está diseñado para ofrecer la mejor experiencia en ordenadores.
       </p>
-      <p class="text-lg text-gray-300 mt-2">
+      <p class="text-lg text-gray-300 mt-2 font-vt323 leading-relaxed">
         Por favor, accede desde un PC o portátil para disfrutar de nuestros juegos.
       </p>
     </div>
-    <header class="absolute top-0 w-full flex justify-center">
-      <nav class="max-w-[900px] w-full flex justify-between items-center py-2">
-        <a href="/" class="flex gap-6 items-center justify-center">
-          <img src="/images/logo.webp" alt="Mini Players" class="w-14 h-14" />
-          <h1 class="text-3xl">Bienvenido a Mini Players</h1>
+    <header class="absolute top-0 w-full flex justify-center z-20 pt-4">
+      <nav class="max-w-[900px] w-full flex justify-between items-center py-4 px-6 bg-[#0f3460]/90 backdrop-blur-sm border-2 border-[#16213e] shadow-[4px_4px_0px_0px_rgba(0,0,0,0.3)] rounded-sm">
+        <a href="/" class="flex gap-4 items-center justify-center group">
+          <div class="w-12 h-12 bg-[#1a1a2e] border-2 border-[#e94560] p-1 flex items-center justify-center group-hover:translate-y-[-2px] transition-transform shadow-[2px_2px_0px_0px_#16213e]">
+             <img src="/images/logo.webp" alt="Mini Players" class="w-full h-full object-contain pixelated" />
+          </div>
+          <div class="flex flex-col">
+              <h1 class="text-xs font-press-start text-[#e94560] mb-1">MINI</h1>
+              <h1 class="text-xl font-press-start text-white leading-none group-hover:text-[#f9d949] transition-colors">PLAYERS</h1>
+          </div>
         </a>
         <div class="relative w-[300px]">
           <div
             class="absolute inset-y-0 start-0 flex items-center ps-3.5 pointer-events-none"
           >
-            <span class="icon-[material-symbols--search]"></span>
+            <span class="icon-[material-symbols--search] text-gray-400"></span>
           </div>
           <input
             type="text"
             id="input-group-1"
-            class="h-8 bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full ps-10 p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-            placeholder="Buscar"
+            class="h-10 bg-[#1a1a2e] border-2 border-[#16213e] text-[#eaeaea] text-lg font-vt323 placeholder-gray-500 focus:ring-0 focus:border-[#e94560] block w-full ps-10 p-2.5 shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] transition-colors"
+            placeholder="Search games..."
             onkeydown="if(event.key==='Enter'){window.location.href='/?search='+encodeURIComponent(this.value);}"
             value={new URLSearchParams(Astro.url.search).get("search") ?? ""}
           />
         </div>
       </nav>
     </header>
-    <section class={fullWidth ? "w-full flex-grow pt-20" : "grid grid-cols-[1fr_4fr_1fr] w-full flex-grow p-20 pt-28"}>
+    <section class={fullWidth ? "w-full flex-grow pt-28" : "grid grid-cols-[1fr_4fr_1fr] w-full flex-grow p-20 pt-32 gap-8"}>
       {!fullWidth && (
       <aside>
         <script
@@ -114,7 +120,7 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
       )}
 
       <main
-        class="flex justify-center items-center"
+        class="flex justify-center items-center relative z-10"
       >
         <slot />
       </main>
@@ -140,36 +146,36 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site);
       )}
     </section>
     <footer
-      class="w-full justify-center items-center p-6 h-18 bg-gray-900 text-white mt-auto"
+      class="w-full justify-center items-center p-8 bg-[#0f3460] text-gray-300 border-t-4 border-[#16213e] mt-auto relative z-10"
     >
-      <div class="flex items-center gap-4 justify-between w-full">
-        <div class="flex flex-wrap justify-center gap-4 text-sm text-gray-400">
-          <a href="/about" class="hover:text-white transition">Sobre Nosotros</a>
-          <a href="/contact" class="hover:text-white transition">Contacto</a>
-          <a href="/privacy" class="hover:text-white transition">Política de Privacidad</a>
-          <a href="/terms" class="hover:text-white transition">Términos y Condiciones</a>
+      <div class="flex items-center gap-4 justify-between w-full max-w-[1200px] mx-auto">
+        <div class="flex flex-wrap justify-center gap-8 text-lg font-vt323 text-[#eaeaea]/70">
+          <a href="/about" class="hover:text-[#e94560] transition hover:translate-y-[-2px]">Sobre Nosotros</a>
+          <a href="/contact" class="hover:text-[#e94560] transition hover:translate-y-[-2px]">Contacto</a>
+          <a href="/privacy" class="hover:text-[#e94560] transition hover:translate-y-[-2px]">Política de Privacidad</a>
+          <a href="/terms" class="hover:text-[#e94560] transition hover:translate-y-[-2px]">Términos y Condiciones</a>
         </div>
         
-        <div class="flex items-center gap-4">
-          <span class="text-sm text-gray-500">
+        <div class="flex items-center gap-6">
+          <span class="text-lg font-vt323 text-gray-500">
             © {new Date().getFullYear()} MiniPlayers
           </span>
           <div class="flex gap-4">
             <a
               href="https://github.com/Mininh1206/mini-players"
-              class="text-gray-400 hover:text-white transition"
+              class="text-gray-400 hover:text-white transition hover:scale-110"
               target="_blank"
               aria-label="GitHub Project"
             >
-              <span class="icon-[mdi--github] text-xl"></span>
+              <span class="icon-[mdi--github] text-2xl"></span>
             </a>
             <a
               href="https://www.linkedin.com/in/daniel-marchena-jim%C3%A9nez/"
-              class="text-gray-400 hover:text-white transition"
+              class="text-gray-400 hover:text-white transition hover:scale-110"
               target="_blank"
               aria-label="LinkedIn Profile"
             >
-              <span class="icon-[mdi--linkedin] text-xl"></span>
+              <span class="icon-[mdi--linkedin] text-2xl"></span>
             </a>
           </div>
         </div>

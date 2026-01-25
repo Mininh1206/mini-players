@@ -1,13 +1,15 @@
 import { v4 as uuidv4 } from 'uuid';
-import type { Trooper, TrooperClass, TrooperAttributes } from './types';
+import type { TrooperData, TrooperAttributes } from './types';
+import { Trooper, Soldier, Sniper, Doctor, Pilot, Commando, Scout, Spy, Saboteur, CommsOfficer, Rat, Recruit } from './classes/Trooper';
 import { getRandomSkill, getDefaultWeapons, getSkillsByLevel, SKILLS } from './skills';
+
 import { getSkillChoices } from './leveler';
 
-const CLASSES: TrooperClass[] = ['Soldier', 'Sniper', 'Doctor', 'Pilot', 'Commando', 'Scout', 'Spy', 'Saboteur'];
+const CLASSES: string[] = ['Soldier', 'Sniper', 'Doctor', 'Pilot', 'Commando', 'Scout', 'Spy', 'Saboteur'];
 const NAMES = ['Sgt. Johnson', 'Pvt. Ryan', 'Cpl. Hicks', 'Lt. Ripley', 'Maj. Kusanagi', 'Capt. Price', 'Soap', 'Ghost', 'Rookie', 'Snake', 'Samus', 'Chief'];
 const RAT_NAMES = ['Rat', 'Giant Rat', 'Sewer Rat', 'Plague Rat', 'Mutant Rat'];
 
-const BASE_ATTRIBUTES: Record<TrooperClass, TrooperAttributes> = {
+const BASE_ATTRIBUTES: Record<string, TrooperAttributes> = {
     'Recruit': { hp: 10, maxHp: 10, initiative: 100, range: 1, damage: 0, aim: 100, dodge: 0, armor: 0, critChance: 5, speed: 100 },
     'Soldier': { hp: 10, maxHp: 10, initiative: 100, range: 1, damage: 0, aim: 100, dodge: 0, armor: 1, critChance: 5, speed: 100 },
     'Sniper': { hp: 10, maxHp: 10, initiative: 110, range: 10, damage: 0, aim: 150, dodge: 5, armor: 0, critChance: 25, speed: 100 },
@@ -23,7 +25,7 @@ const BASE_ATTRIBUTES: Record<TrooperClass, TrooperAttributes> = {
 
 export const generateRandomTrooper = (targetLevel: number = 1): Trooper => {
     // 1. Initialize as a Level 1 Recruit
-    const trooperClass: TrooperClass = 'Recruit';
+    const trooperClass: string = 'Recruit';
     const name = NAMES[Math.floor(Math.random() * NAMES.length)];
     const baseStats = { ...BASE_ATTRIBUTES['Recruit'] };
     // Human base HP correction
@@ -39,7 +41,7 @@ export const generateRandomTrooper = (targetLevel: number = 1): Trooper => {
     const startingSkill = getRandomSkill([startingWeapon], 1, 5, true); 
     
     let skills = [startingWeapon, startingSkill];
-    let currentClass: TrooperClass = trooperClass;
+    let currentClass: string = trooperClass;
     let currentLevel = 1;
 
     // 4. Simulate Leveling Up
@@ -51,7 +53,7 @@ export const generateRandomTrooper = (targetLevel: number = 1): Trooper => {
             skills: skills,
             class: currentClass,
             attributes: baseStats
-        } as Trooper;
+        } as TrooperData;
 
         const choices = getSkillChoices(tempTrooperShim);
         const selection = choices[Math.floor(Math.random() * choices.length)];
@@ -63,7 +65,7 @@ export const generateRandomTrooper = (targetLevel: number = 1): Trooper => {
         // We can check level or instanceof if imported, or just find in SKILLS
         const specMatch = SKILLS.find(s => s.id === selection.id && s.level === 6);
         if (specMatch) {
-             currentClass = specMatch.name as TrooperClass;
+             currentClass = specMatch.name;
              if ((specMatch as any).hpBonus) {
                  baseStats.maxHp += (specMatch as any).hpBonus;
                  baseStats.hp += (specMatch as any).hpBonus;
@@ -81,7 +83,7 @@ export const generateRandomTrooper = (targetLevel: number = 1): Trooper => {
         }
     });
 
-    return {
+    const data: TrooperData = {
         id: uuidv4(),
         name,
         class: currentClass,
@@ -99,6 +101,7 @@ export const generateRandomTrooper = (targetLevel: number = 1): Trooper => {
             targetPart: 'any'
         }
     };
+    return instantiateTrooper(data);
 };
 
 export const generateRat = (level: number = 1): Trooper => {
@@ -114,7 +117,7 @@ export const generateRat = (level: number = 1): Trooper => {
     // but combat system defaults to Fists/Melee if no weapon. 
     // Let's rely on Melee fallback for now as "Bite".
 
-    return {
+    const data: TrooperData = {
         id: uuidv4(),
         name,
         class: 'Rat',
@@ -132,9 +135,10 @@ export const generateRat = (level: number = 1): Trooper => {
             targetPart: 'any'
         }
     };
+    return new Rat(data);
 };
 
-export const generateSpecificTrooper = (trooperClass: TrooperClass, level: number): Trooper => {
+export const generateSpecificTrooper = (trooperClass: string, level: number): Trooper => {
     // Force specific class generation for Campaign
     const name = NAMES[Math.floor(Math.random() * NAMES.length)];
     const baseStats = { ...BASE_ATTRIBUTES[trooperClass] };
@@ -163,7 +167,7 @@ export const generateSpecificTrooper = (trooperClass: TrooperClass, level: numbe
             skills: skills,
             class: trooperClass, // The specific class requested (e.g. 'Spy')
             attributes: baseStats
-        } as Trooper;
+        } as TrooperData;
 
         // If i=5 (Level 5 -> 6), getSkillChoices will see 'targetLevel=6'.
         // If class='Spy', it will return [SpySkill].
@@ -183,7 +187,7 @@ export const generateSpecificTrooper = (trooperClass: TrooperClass, level: numbe
         }
     });
 
-    return {
+    const data: TrooperData = {
         id: uuidv4(),
         name,
         class: trooperClass,
@@ -201,37 +205,27 @@ export const generateSpecificTrooper = (trooperClass: TrooperClass, level: numbe
             targetPart: 'any'
         }
     };
+    return instantiateTrooper(data);
 };
 
-export const recalculateTrooperHp = (trooper: Trooper): Trooper => {
-    // 1. Base HP (Human Recruit start)
-    let newMaxHp = 10;
-
-    // 2. Growth from Leveling
-    // Soldier Specialization: +1 HP per Level
-    if (trooper.class === 'Soldier') {
-        newMaxHp += trooper.level;
+// Helper factory
+export const instantiateTrooper = (data: TrooperData): Trooper => {
+    switch (data.class) {
+        case 'Soldier': return new Soldier(data);
+        case 'Sniper': return new Sniper(data);
+        case 'Doctor': return new Doctor(data);
+        case 'Pilot': return new Pilot(data);
+        case 'Commando': return new Commando(data);
+        case 'Scout': return new Scout(data);
+        case 'Spy': return new Spy(data);
+        case 'Saboteur': return new Saboteur(data);
+        case 'Comms Officer': return new CommsOfficer(data);
+        case 'Rat': return new Rat(data);
+        case 'Recruit': return new Recruit(data);
+        default: return new Recruit(data); // Default fallback now Recruit
     }
-    
-    // Rat Scaling
-    if (trooper.class === 'Rat') {
-        newMaxHp = 10 + (trooper.level - 1) * 2;
-    }
-
-    // 3. Bonuses from Skills (Specializations - kept for other potential buffs)
-    trooper.skills.forEach(skill => {
-        const def = SKILLS.find(s => s.id === skill.id);
-        if (def && (def as any).hpBonus) {
-            newMaxHp += (def as any).hpBonus;
-        }
-    });
-
-    return {
-        ...trooper,
-        attributes: {
-            ...trooper.attributes,
-            maxHp: newMaxHp,
-            hp: newMaxHp // Full Heal on update/recalc
-        }
-    };
 };
+
+
+// Removed recalculateTrooperHp - use trooper.recalculateStats() instead
+

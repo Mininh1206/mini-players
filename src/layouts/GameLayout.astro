@@ -1,0 +1,110 @@
+---
+import "@/styles/global.css";
+interface Props {
+    title: string;
+    description?: string;
+    image?: string;
+}
+
+const {
+    title,
+    description = "Juega a los mejores minijuegos clásicos online en MiniPlayers.",
+    image = "/images/og-image.webp",
+} = Astro.props;
+
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+---
+
+<!doctype html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.webp" />
+        <meta name="generator" content={Astro.generator} />
+
+        <!-- SEO Principal -->
+        <title>{title}</title>
+        <meta name="description" content={description} />
+        <link rel="canonical" href={canonicalURL} />
+
+        <!-- Open Graph / Facebook -->
+        <meta property="og:type" content="website" />
+        <meta property="og:url" content={Astro.url} />
+        <meta property="og:title" content={title} />
+        <meta property="og:description" content={description} />
+        <meta property="og:image" content={new URL(image, Astro.url)} />
+
+        <!-- Twitter -->
+        <meta property="twitter:card" content="summary_large_image" />
+        <meta property="twitter:url" content={Astro.url} />
+        <meta property="twitter:title" content={title} />
+        <meta property="twitter:description" content={description} />
+        <meta property="twitter:image" content={new URL(image, Astro.url)} />
+
+        <script
+            async
+            src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-3615553983953486"
+            crossorigin="anonymous"></script>
+    </head>
+    <body
+        class="min-h-screen bg-[#1a1a2e] text-[#eaeaea] font-sans selection:bg-[#e94560]/30 overflow-x-hidden"
+    >
+        <div class="crt-overlay"></div>
+        <header
+            class="h-20 border-b-4 border-[#16213e] bg-[#0f3460] sticky top-0 z-50 flex items-center justify-between px-6 shadow-[0px_4px_0px_0px_rgba(0,0,0,0.3)]"
+        >
+            <div class="flex items-center gap-6">
+                <button
+                    id="backBtn"
+                    class="w-10 h-10 flex items-center justify-center bg-[#1a1a2e] hover:bg-[#e94560] text-gray-400 hover:text-white transition-colors border-2 border-[#16213e] shadow-[2px_2px_0px_0px_rgba(0,0,0,0.5)] active:translate-y-1 active:shadow-none"
+                    title="Go Back"
+                >
+                    <span class="font-bold text-xl mb-1">←</span>
+                </button>
+                <div class="flex flex-col">
+                    <h1
+                        class="text-xs md:text-sm font-press-start text-[#e94560] tracking-widest uppercase mb-1"
+                    >
+                        MINI-PLAYERS
+                    </h1>
+                    <h2
+                        class="text-xl md:text-2xl font-bold tracking-tight text-white font-vt323 leading-none"
+                    >
+                        {title}
+                    </h2>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-4">
+                <div
+                    class="flex items-center gap-2 px-3 py-1 bg-[#1a1a2e] border-2 border-[#16213e]"
+                >
+                    <div
+                        class="w-3 h-3 bg-green-500 animate-pulse shadow-[0_0_5px_rgba(34,197,94,0.8)]"
+                    >
+                    </div>
+                    <span
+                        class="text-sm font-vt323 text-green-400 tracking-wider"
+                        >ONLINE</span
+                    >
+                </div>
+            </div>
+        </header>
+
+        <main
+            class="p-4 lg:p-8 max-w-[1920px] mx-auto animate-fade-in relative z-10"
+        >
+            <slot />
+        </main>
+    </body>
+</html>
+
+<script>
+    const backBtn = document.getElementById("backBtn");
+    if (backBtn) {
+        backBtn.addEventListener("click", () => {
+            window.history.back();
+        });
+    }
+</script>

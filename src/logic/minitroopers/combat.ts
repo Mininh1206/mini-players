@@ -1,4 +1,6 @@
-import type { Trooper, BattleResult, BattleLogEntry, BodyPart } from './types';
+import type { TrooperData, BattleResult, BattleLogEntry, BodyPart } from './types';
+import { Trooper, Soldier, Sniper, Doctor, Pilot, Commando, Scout, Spy, Saboteur, CommsOfficer, Rat } from './classes/Trooper';
+
 import { getDeploymentLimit, getDeploymentCost } from './deployment';
 import { getSabotage } from './stats';
 import { Weapon, Grenade, Shotgun, AssaultRifle, Handgun, SniperRifle, MachineGun, Launcher, Melee } from './classes/Skill';
@@ -28,37 +30,23 @@ export const SKILLS = {
 
 // --- Power Calculation ---
 
-export const calculateTrooperPower = (trooper: Trooper): number => {
-    let power = 0;
-    // Base power from Level
-    power += trooper.level * 10;
 
-    // Stats
-    power += trooper.attributes.maxHp / 2; // HP contribution
-    power += trooper.attributes.damage * 2; // Damage contribution (rough)
-    power += trooper.attributes.aim / 5;
-    power += trooper.attributes.dodge;
-    power += trooper.attributes.initiative / 2;
-
-    // Skills
-    power += trooper.skills.length * 5;
-
-    // Specialization Bonus
-    if (trooper.class !== 'Recruit') {
-        power += 20;
-    }
-
-    return Math.floor(power);
-};
+// Power Calculation delegated to Trooper class
 
 export const calculateSquadPower = (squad: Trooper[]): number => {
-    return squad.reduce((total, t) => total + calculateTrooperPower(t), 0);
+    return squad.reduce((total, t) => total + t.getPower(), 0);
 };
 
 export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult {
     // Deep copy to avoid mutating original state during simulation
-    const reserveA = JSON.parse(JSON.stringify(teamA)) as Trooper[];
-    const reserveB = JSON.parse(JSON.stringify(teamB)) as Trooper[];
+    // Use clone() instead of JSON.parse logic if possible, but input is Trooper[]. 
+    // If input is generic TrooperData, we need to instantiate.
+    // Assuming input is already Trooper instances? 
+    // Or we should convert them here.
+    // For now, let's assume they are instances or we instantiate them.
+    // To be safe with the Refactor, let's assume simulateBattle receives instances.
+    const reserveA = teamA.map(t => t.clone());
+    const reserveB = teamB.map(t => t.clone());
 
     // Jamming State (TrooperID -> List of Jammed Weapon IDs)
     const jammedWeapons = new Map<string, string[]>();
@@ -191,7 +179,8 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
             deployedB,
             reserveA,
             reserveB,
-            jammedWeapons
+            jammedWeapons,
+            resolveWeaponShot
         };
 
         // Tick Loop
@@ -249,471 +238,17 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
             if (actor.actionTimer >= 1000) {
                 actor.actionTimer -= 1000; // Consume timer
 
-                // Identify enemies
-                const enemySquad = actor.team === 'A' ? deployedB : deployedA;
-                const livingEnemies = enemySquad.filter(t => !t.isDead);
+                // Execute Turn Logic
+                const actionTaken = actor.playTurn(context);
 
-                if (livingEnemies.length === 0) {
-                    break;
+                if (actionTaken) {
+                    actor.actionTimer! -= 1000;
                 }
-
-                // 0. Skill Turn Start Hooks (e.g. Doctor Heal)
-                if (skillManager.executeTurnStart(actor, context)) {
-                    actor.recoveryTime = 50; // Small recovery for skill usage
-                    continue;
-                }
-
-                // 1. Identify Target
-                // Filter by Aggro (Bait skill)
-                const aggroEnemies = livingEnemies.filter(e => (e.attributes.aggro || 0) > 0);
-                const potentialTargets = aggroEnemies.length > 0 ? aggroEnemies : livingEnemies;
-
-                const priority = actor.tactics?.priority || 'closest';
-
-                let target: Trooper | null = null;
-
-                if (priority === 'closest') {
-                    let minDist = 9999;
-                    potentialTargets.forEach(e => {
-                        const dist = getDistance(actor.position, e.position);
-                        if (dist < minDist) {
-                            minDist = dist;
-                            target = e;
-                        }
-                    });
-                } else if (priority === 'weakest') {
-                    // Lowest HP or Encumbered
-                    target = potentialTargets.reduce((prev, curr) => prev.attributes.hp < curr.attributes.hp ? prev : curr);
-                } else if (priority === 'strongest') {
-                    // Highest Level or Threat
-                     target = potentialTargets.reduce((prev, curr) => calculateTrooperPower(prev) > calculateTrooperPower(curr) ? prev : curr);
-                } else if (priority === 'random') {
-                    target = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
-                } else {
-                     // Default 'closest'
-                     let minDist = 9999;
-                    potentialTargets.forEach(e => {
-                        const dist = getDistance(actor.position, e.position);
-                        if (dist < minDist) {
-                            minDist = dist;
-                            target = e;
-                        }
-                    });
-                }
-
-                if (!target) {
-                    console.error("Critical: Target selection failed.");
-                    break;
-                }
-
-                const dist = getDistance(actor.position, target.position);
-
-                // Helper: Check if weapon is usable (not jammed, not disarmed)
-                const isUsable = (w: Weapon) => {
-                    return !jammedWeapons.get(actor.id)?.includes(w.id) && !actor.disarmed?.includes(w.id);
-                };
-                const isMainWeapon = (s: any): s is Weapon => {
-                    const def = ALL_SKILLS.find((d: { id: any; }) => d.id === s.id);
-                    return def instanceof Weapon;
-                };
-                const isUsableMainWeapon = (s: any) => isMainWeapon(s) && isUsable(s);
-
-                // Helper: Get equipped weapon
-                let equippedWeapon = actor.skills.find(s => s.id === actor.currentWeaponId) as Weapon | undefined;
-                
-                // Auto-equip if none or invalid
-                if (!equippedWeapon) {
-                    const weapons = actor.skills.filter(isUsableMainWeapon);
-                    if (weapons.length > 0) {
-                        equippedWeapon = weapons[0] as Weapon;
-                        actor.currentWeaponId = equippedWeapon.id;
-                    }
-                }
-                
-                let actionTaken = false;
-
-                // 0. FORCE SWITCH If Jammed/Disarmed
-                if (equippedWeapon && !isUsable(equippedWeapon)) {
-                     const available = actor.skills.filter(isUsableMainWeapon) as Weapon[];
-                     if (available.length > 0) {
-                         // Prioritize Favorite
-                         const favId = actor.tactics?.favoriteWeaponId;
-                         available.sort((a, b) => {
-                             if (a.id === favId) return -1;
-                             if (b.id === favId) return 1;
-                             return 0;
-                         });
-
-                         // Switch to first usable
-                         actor.currentWeaponId = available[0].id;
-                         equippedWeapon = available[0];
-                         log.push({ 
-                            time, 
-                            actorId: actor.id, 
-                            actorName: actor.name, 
-                            action: 'switch_weapon', 
-                            message: `${actor.name} switches to ${equippedWeapon.name} (Weapon Broken!)`,
-                            data: { weaponId: equippedWeapon.id }
-                         });
-                         actor.actionTimer += 200;
-                         actionTaken = true;
-                     } else {
-                         // No usable weapons -> Fists
-                         delete actor.currentWeaponId;
-                         equippedWeapon = undefined;
-                         log.push({ 
-                            time, 
-                            actorId: actor.id, 
-                            actorName: actor.name, 
-                            action: 'switch_weapon', 
-                            message: `${actor.name} switches to Fists (Weapons lost or jammed!)`,
-                            data: { weaponId: null }
-                         });
-                         actor.actionTimer += 100;
-                         actionTaken = true;
-                     }
-                }
-
-                // TACTICS: Switch to Favorite Weapon if valid and safe
-                const favId = actor.tactics?.favoriteWeaponId;
-                if (favId && actor.currentWeaponId !== favId && !actionTaken) {
-                     const favWeapon = actor.skills.find(s => s.id === favId) as Weapon;
-                     // Check usability (Ammo/Jammed)
-                     // Exclude Grenades from "Favorite Weapon" auto-switch (handled by UI, but double check logic)
-                     const canUse = favWeapon && isUsableMainWeapon(favWeapon) && (actor.ammo?.[favId] ?? 0) > 0;
-                     
-                     if (canUse) {
-                          // Check Safety (Range/AoE) to avoid oscillation
-                          let isSafe = true;
-                          const rangeMin = (favWeapon as any).rangeMin ?? 0;
-                          const area = (favWeapon as any).area ?? 0;
-                          const distToCheck = dist; // Current distance
-                          
-                          if (area > 0 && distToCheck <= area * 1.2) isSafe = false;
-                          if (rangeMin > 0 && distToCheck < rangeMin * 100) isSafe = false;
-                          
-                          if (isSafe) {
-                              actor.currentWeaponId = favId;
-                              equippedWeapon = favWeapon;
-                              log.push({ 
-                                 time, 
-                                 actorId: actor.id, 
-                                 actorName: actor.name, 
-                                 action: 'switch_weapon', 
-                                 message: `${actor.name} draws favorite ${favWeapon.name}.`,
-                                 data: { weaponId: favId }
-                              });
-                              actor.actionTimer += 200;
-                              actionTaken = true;
-                          }
-                     }
-                }
-
-                // TACTICS: Grenade Usage
-                if (!actionTaken) {
-                     const grenades = actor.skills.filter(s => {
-                         const def = ALL_SKILLS.find(d => d.id === s.id);
-                         return def instanceof Grenade;
-                     }) as Grenade[]; // Cast for usage, but we rely on def for props logic if needed? 
-                     // Actually, we should probably map them to the definitions to be safe, but let's assume properties exist on the object for now or find the Grenade def.
-                     
-                     
-                     const validGrenade = grenades.find(g => {
-                         const def = ALL_SKILLS.find(d => d.id === g.id) as Grenade; // Use def for static props
-                         return (actor.ammo?.[g.id] ?? 0) > 0 && 
-                         dist <= (def.range * 100) && 
-                         !actor.jammedWeapons?.includes(g.id);
-                     });
-                     
-                     if (validGrenade && Math.random() < 0.35) {
-                          const def = ALL_SKILLS.find(d => d.id === validGrenade.id) as Grenade;
-                          resolveWeaponShot(actor, target!, def, context); // Pass Definition to ensure instanceof Grenade works in resolve check?
-                          actor.ammo![validGrenade.id]--;
-                          actor.recoveryTime = 20;
-                          actionTaken = true;
-                     }
-                }
-
-                // Action Decision Tree
-                if (!actionTaken) {
-                    actor.isMoving = false; // Default false unless we move
-
-                    // 0. AI SAFETY CHECK (Self-Injury Avoidance & Sniper Minimum Range)
-                    let tooClose = false;
-                    if (equippedWeapon && (equippedWeapon as any).area > 0) {
-                        const area = (equippedWeapon as any).area;
-                        if (dist <= area * 1.2) tooClose = true;
-                    }
-                    if (equippedWeapon && (equippedWeapon as any).rangeMin && dist < ((equippedWeapon as any).rangeMin * 100)) {
-                        tooClose = true;
-                    }
-                    
-                    if (tooClose) {
-                         // DANGER: Target is too close!
-                        const safeWeapon = actor.skills.find(s =>
-                            (s as any).damage &&
-                            !(s as any).area && // No AoE
-                            (!((s as any).rangeMin) || dist >= ((s as any).rangeMin * 100)) && // Respect Min Range
-                            (actor.ammo?.[s.id] || 0) > 0 &&
-                            isUsableMainWeapon(s)
-                        );
-
-                    if (safeWeapon) {
-                        actor.currentWeaponId = safeWeapon.id;
-                        equippedWeapon = safeWeapon as Weapon;
-                        log.push({ 
-                            time, 
-                            actorId: actor.id, 
-                            actorName: actor.name, 
-                            action: 'switch_weapon', 
-                            message: `${actor.name} switches weapon (Target too close!).`,
-                            data: { weaponId: safeWeapon.id }
-                        });
-                        actor.actionTimer += 200; // Small penalty
-                        actionTaken = true; // Act next tick with new weapon
-                    } else {
-                        // Retreat
-                        if (dist < 50) {
-                            // Melee panic
-                            log.push({ time, actorId: actor.id, actorName: actor.name, action: 'attack', damage: 3, targetId: target.id, message: `${actor.name} punches ${target.name}!` });
-                            target.attributes.hp -= 3; // Weak punch
-                             if (target.attributes.hp <= 0) target.isDead = true;
-                            actor.recoveryTime = 10;
-                            actionTaken = true;
-                        } else {
-                            const escapeAngle = Math.atan2((actor.position!.y) - (target.position!.y), (actor.position!.x) - (target.position!.x)); // Away
-                            const moveSpeed = (actor.attributes.speed || 100) / 10; // Base move per tick
-                            
-                            // Wounds affect speed? Encumberance?
-                            let speedMod = 1.0;
-                            if (equippedWeapon && equippedWeapon.encumberance) speedMod -= (equippedWeapon.encumberance / 100);
-                            
-                            const finalSpeed = Math.max(1, moveSpeed * speedMod);
-                            
-                            
-                            actor.position!.x += Math.cos(escapeAngle) * finalSpeed;
-                            actor.position!.y += Math.sin(escapeAngle) * finalSpeed;
-
-                            // Clamp values to map bounds
-                            actor.position!.x = Math.max(0, Math.min(1000, actor.position!.x));
-                            actor.position!.y = Math.max(0, Math.min(400, actor.position!.y));
-
-                            actor.isMoving = true;
-                            log.push({ time, actorId: actor.id, actorName: actor.name, action: 'move', targetPosition: { ...actor.position! }, message: `${actor.name} retreats to safe distance.` });
-                            actor.recoveryTime = 10;
-                            actionTaken = true;
-                        }
-                    }
-                    }
-                }
-
-                // 1. Shoot (if in range and has ammo, and we didn't just bail)
-                if (!actionTaken && equippedWeapon && isUsable(equippedWeapon)) {
-                    const range = ((equippedWeapon as any).range || 1) * 100;
-                    const ammo = actor.ammo?.[equippedWeapon.id] || 0;
-
-                    if (dist <= range && ammo > 0) {
-                        
-                        // Check Line of Fire (Friendly Fire) - ONLY FOR FIRST SHOT DECISION
-                        let lofBlocked = false; 
-                        
-                         const vX = (target!.position?.x || 0) - (actor.position?.x || 0);
-                         const vY = (target!.position?.y || 0) - (actor.position?.y || 0);
-                         const distToTarget = Math.sqrt(vX * vX + vY * vY);
-                         const dirX = distToTarget > 0 ? vX / distToTarget : 0;
-                         const dirY = distToTarget > 0 ? vY / distToTarget : 0;
-
-                        if (distToTarget > 0) {
-                             const friendlies = allTroopers.filter(a => a.team === actor.team && a.id !== actor.id && !a.isDead);
-                             for (const friend of friendlies) {
-                                 const fx = (friend.position?.x || 0) - (actor.position?.x || 0);
-                                 const fy = (friend.position?.y || 0) - (actor.position?.y || 0);
-                                 const fDot = fx * dirX + fy * dirY;
-
-                                 if (fDot > 0 && fDot < distToTarget) { // Between shooter and target
-                                     const fPerpX = fx - fDot * dirX;
-                                     const fPerpY = fy - fDot * dirY;
-                                     const fDistFromLine = Math.sqrt(fPerpX * fPerpX + fPerpY * fPerpY);
-                                     if (fDistFromLine < 20) { // Hitbox check
-                                         lofBlocked = true;
-                                         break;
-                                     }
-                                 }
-                             }
-                        }
-
-                        if (lofBlocked && Math.random() < 0.7) {
-                             // Reposition Logic
-                            const moveSpeed = (actor.attributes.speed || 100) / 10;
-                            const moveDist = moveSpeed;
-                            const angle = Math.atan2(vY, vX);
-                            const strafeAngle = angle + (Math.random() > 0.5 ? Math.PI / 2 : -Math.PI / 2);
-                            let newX = (actor.position?.x || 0) + Math.cos(strafeAngle) * moveDist;
-                            let newY = (actor.position?.y || 0) + Math.sin(strafeAngle) * moveDist;
-
-                            newX = Math.max(0, Math.min(1000, newX));
-                            newY = Math.max(0, Math.min(400, newY));
-
-                            actor.position = { x: newX, y: newY };
-                            log.push({
-                                time, actorId: actor.id, actorName: actor.name, action: 'move', targetPosition: { ...actor.position },
-                                message: `${actor.name} repositions to clear line of fire.`
-                            });
-                            actor.recoveryTime = 10;
-                            actionTaken = true;
-                        } else {
-                            // EXECUTE ATTACK (First Shot)
-                            const bursts = (equippedWeapon as any).bursts || 1;
-                            
-                            resolveWeaponShot(actor, target!, equippedWeapon!, context);
-                            actor.ammo![equippedWeapon!.id]--;
-                            
-                            if (bursts > 1 && (actor.ammo![equippedWeapon!.id] || 0) > 0 && !target!.isDead) {
-                                actor.burstState = {
-                                    shotsRemaining: bursts - 1,
-                                    targetId: target!.id,
-                                    weaponId: equippedWeapon!.id
-                                };
-                                actor.recoveryTime = 4;
-                            } else {
-                                const baseRecovery = (equippedWeapon as any).recovery || 10;
-                                actor.recoveryTime = Math.max(0, Math.max(10, baseRecovery - (actor.attributes.recoveryMod || 0) * 10));
-                            }
-                            actionTaken = true;
-                        }
-                    }
-                }
-
-                // 2. Switch Weapon
-                if (!actionTaken) {
-                    // Only switch if current is BAD (Empty, Out of Range, or Jammed)
-                    // We already handled Jammed/Empty/Safety above. 
-                    // This block is for "Optimization".
-                    
-                    const currentAmmo = equippedWeapon ? (actor.ammo?.[equippedWeapon.id] || 0) : 0;
-                    const currentRange = equippedWeapon ? ((equippedWeapon as any).range || 1) * 100 : 0;
-                    const currentMinRange = equippedWeapon ? ((equippedWeapon as any).rangeMin || 0) * 100 : 0;
-                    
-                    const isCurrentValid = equippedWeapon && 
-                                           currentAmmo > 0 && 
-                                           dist <= currentRange && 
-                                           dist >= currentMinRange;
-
-                    if (!isCurrentValid) {
-                        const availableWeapons = actor.skills.filter(isUsableMainWeapon) as Weapon[];
-                        const betterWeapon = availableWeapons.find(w => {
-                            // Find definition to check static stats
-                            const def = ALL_SKILLS.find(d => d.id === w.id);
-                            if (!def) return false;
-                            
-                            const range = ((def as any).range || 1) * 100;
-                            const minRange = ((def as any).rangeMin || 0) * 100;
-                            return dist <= range && dist >= minRange && (actor.ammo?.[w.id] || 0) > 0;
-                        });
-
-                        if (betterWeapon && betterWeapon.id !== equippedWeapon?.id) {
-                        actor.currentWeaponId = betterWeapon.id;
-                        const hasJuggler = actor.skills.some(s => s.id === 'juggler');
-                        log.push({
-                            time, actorId: actor.id, actorName: actor.name, action: 'switch_weapon',
-                            message: `${actor.name} switches to ${betterWeapon.name}.${hasJuggler ? ' (Juggler)' : ''}`
-                        });
-                        if (!hasJuggler) {
-                            actor.recoveryTime = 20;
-                            actionTaken = true;
-                        }
-                    }
-                }
-
-                // 3. Reload
-                if (!actionTaken && equippedWeapon && isUsableMainWeapon(equippedWeapon)) {
-                    const currentAmmo = actor.ammo?.[equippedWeapon.id] || 0;
-                    const capacity = (equippedWeapon as any).capacity || 1;
-                    const reserves = actor.reserves?.[equippedWeapon.id] || 0;
-
-                    // Reload if not full AND (Empty OR Target Far/Safe) AND Has Reserves
-                    if (currentAmmo < capacity && reserves > 0 && (currentAmmo <= 0 || dist > ((equippedWeapon as any).range || 1) * 100)) {
-                        actor.ammo![equippedWeapon.id] = currentAmmo + 1;
-                        actor.reserves![equippedWeapon.id] = reserves - 1;
-                        
-                        log.push({
-                            time, actorId: actor.id, actorName: actor.name, action: 'reload',
-                            message: `${actor.name} reloads a shell. (${actor.reserves![equippedWeapon.id]} left)`
-                        });
-                        actor.recoveryTime = 10;
-                        actionTaken = true;
-                    } else if (currentAmmo <= 0 && reserves <= 0) {
-                        // Out of ammo completely? Switch or Fists?
-                        // Forces switch in next loop via "Force Switch" logic (usability check usually handles ammo>0?)
-                        // We need to ensure isUsableMainWeapon returns false if Total Ammo (Mag+Res) is 0?
-                        // But isUsable currently checks Jammed.
-                        // Filter in choosing weapon checks `(actor.ammo?.[s.id] || 0) > 0`. 
-                        // It only checks Magazine.
-                        // If Magazine is 0, it skips?
-                        // Line 319 (Auto-equip) checks `isUsableMainWeapon`.
-                        // Line 553 (Better Weapon) checks `(actor.ammo > 0)`.
-                        // If Mag is 0 but Reserve > 0, we should be able to equip and Reload.
-                        // I'll leave as is, logic should eventually reload.
-                    }
-                }
-
-                // 4. Melee
-                if (!actionTaken && dist <= 50) {
-                    const damage = 5 + (actor.attributes.damage || 0);
-                    target!.attributes.hp = Math.max(0, target!.attributes.hp - damage);
-                    if (target!.attributes.hp === 0) target!.isDead = true;
-                    log.push({
-                        time, actorId: actor.id, actorName: actor.name, targetId: target!.id, targetName: target!.name,
-                        action: 'attack', damage, message: `${actor.name} hits ${target!.name} with Fists for ${damage}`
-                    });
-                    actor.recoveryTime = 20;
-                    actionTaken = true;
-                }
-
-                // 5. Move
-                if (!actionTaken) {
-                    const moveSpeed = (actor.attributes.speed || 100) / 2;
-                    const dx = (target!.position?.x || 0) - (actor.position?.x || 0);
-                    const dy = (target!.position?.y || 0) - (actor.position?.y || 0);
-                    const length = Math.sqrt(dx * dx + dy * dy);
-
-                    if (length > 0) {
-                        const moveX = (dx / length) * moveSpeed;
-                        const moveY = (dy / length) * moveSpeed;
-                        actor.position = {
-                            x: Math.max(0, Math.min(1000, (actor.position?.x || 0) + moveX)),
-                            y: Math.max(0, Math.min(400, (actor.position?.y || 0) + moveY))
-                        };
-                        log.push({
-                            time, actorId: actor.id, actorName: actor.name, action: 'move', targetPosition: { ...actor.position },
-                            message: `${actor.name} moves towards ${target!.name}.`
-                        });
-                        actor.recoveryTime = 10;
-                        actionTaken = true;
-                    } else {
-                        // Jiggle
-                        actor.position!.x = Math.max(0, Math.min(1000, actor.position!.x + (Math.random() - 0.5) * 20));
-                        actionTaken = true;
-                        actor.recoveryTime = 5;
-                    }
-                }
-
-                // 6. Fallback
-                if (!actionTaken) {
-                    log.push({
-                        time, actorId: actor.id, actorName: actor.name, action: 'wait',
-                        message: `${actor.name} is hesitating...`
-                    });
-                    actor.recoveryTime = 10;
-                    actionTaken = true;
-                }
-
-
 
                 // Skill Turn End Hooks
                 skillManager.executeOnTurnEnd(actor, context);
             }
-        }} // End of for loop
+        } // End of for loop
 
         // Cleanup Dead
         for (let i = deployedA.length - 1; i >= 0; i--) {
@@ -808,7 +343,7 @@ const applyWound = (trooper: Trooper, location: BodyPart, log: BattleLogEntry[],
     }
 };
 
-function resolveWeaponShot(actor: Trooper, target: Trooper, weapon: Weapon | Grenade, context: BattleContext) {
+export function resolveWeaponShot(actor: Trooper, target: Trooper, weapon: Weapon | Grenade, context: BattleContext) {
     const { log, allTroopers, time } = context;
 
     const vX = (target.position?.x || 0) - (actor.position?.x || 0);

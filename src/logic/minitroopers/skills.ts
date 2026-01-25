@@ -60,7 +60,7 @@ export const SKILLS: Skill[] = [
 
     // Weapons - Rifles
     // Sniper: Dam:4, Rng:100, Crit:15, Aim:150, Rec:100, Cap:1, Shots:2
-    new SniperRifle('sniper_rifle', 'Sniper Rifle', 'Long range precision weapon.', '🎯', 4, 1, 100, 15, 150, 100, 1, 5, 0, 4, 2),
+    new SniperRifle('sniper_rifle', 'Sniper Rifle', 'Long range precision weapon.', '🎯', 4, 1, 100, 15, 150, 100, 1, 2, 0, 4, 2),
     // CK: Dam:3, Rng:100, Crit:25, Aim:150, Rec:65, Cap:6, Shots:12, Heavy (Enc 20)
     new SniperRifle('ck_magellan', 'CK-Magellan', 'Advanced sniper rifle.', '🔭', 3, 1, 100, 25, 150, 65, 6, 20, 20, 5, 12),
     // Jungle: Dam:5, Rng:100, Crit:20, Aim:120, Rec:100, Cap:2, Shots:4, Heavy

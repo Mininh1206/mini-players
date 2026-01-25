@@ -1,4 +1,5 @@
-import type { Trooper, BattleLogEntry, BattleResult } from '../types';
+import type { BattleLogEntry, BattleResult } from '../types';
+import type { Trooper } from '../classes/Trooper';
 import type { Weapon } from '../classes/Skill';
 
 export interface BattleContext {
@@ -11,6 +12,7 @@ export interface BattleContext {
     reserveA: Trooper[];
     reserveB: Trooper[];
     jammedWeapons: Map<string, string[]>; // TrooperID -> WeaponIDs
+    resolveWeaponShot?: (actor: Trooper, target: Trooper, weapon: Weapon | any, context: BattleContext) => void;
 }
 
 export interface SkillImplementation {

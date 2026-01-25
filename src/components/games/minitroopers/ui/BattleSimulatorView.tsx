@@ -1,6 +1,7 @@
 import React from 'react';
 import MiniTroopersGame from '../MiniTroopersGame';
-import type { BattleResult, Trooper } from '@/logic/minitroopers/types';
+import type { BattleResult } from '@/logic/minitroopers/types';
+import { Trooper } from '@/logic/minitroopers/classes/Trooper';
 import { useTranslation } from '@/logic/minitroopers/i18n';
 
 interface BattleSimulatorViewProps {
@@ -36,9 +37,9 @@ const BattleSimulatorView: React.FC<BattleSimulatorViewProps> = ({
     };
 
     return (
-        <div className="flex flex-row h-[600px] w-full overflow-hidden bg-black">
+        <div className="h-full flex flex-row w-full overflow-hidden bg-black">
             {/* Game Area */}
-            <div className="flex-1 relative">
+            <div className="flex-1 relative h-full">
                 {/* Overlay UI: Back Button & Header */}
                 <div className="absolute top-4 left-4 z-50 flex gap-4 items-center" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
                     <button 
@@ -68,10 +69,10 @@ const BattleSimulatorView: React.FC<BattleSimulatorViewProps> = ({
             {/* Sidebar Log */}
             <div className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col shrink-0">
                 <div className="p-3 border-b border-gray-800 bg-gray-950 flex justify-between items-center">
-                    <span className="font-bold text-gray-400 uppercase text-xs">{t('combat_log')}</span>
-                    <span className="text-xs text-gray-600">{(t('events_count') as string).replace('{{count}}', String(battleResult.log.length))}</span>
+                    <span className="font-bold text-gray-400 uppercase text-lg font-vt323">{t('combat_log')}</span>
+                    <span className="text-sm text-gray-600">{(t('events_count') as string).replace('{{count}}', String(battleResult.log.length))}</span>
                 </div>
-                <div className="flex-1 min-h-0 overflow-y-auto p-4 font-mono text-xs text-gray-400">
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 font-vt323 text-sm text-gray-400">
                     {battleResult.log.map((entry, idx) => {
                         const isMyUnit = entry.actorId && mySquad.some(s => s.id === entry.actorId);
                         return (

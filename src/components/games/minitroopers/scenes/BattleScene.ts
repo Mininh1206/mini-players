@@ -444,8 +444,8 @@ export class BattleScene extends Phaser.Scene {
                      }
                  });
              }
-
-        } else if (log.action === 'reload') {
+             return;
+         } else if (log.action === 'reload') {
              const weaponId = actor.getData('currentWeaponId');
               if (weaponId) {
                  const currentAmmo = actor.getData(`ammo_${weaponId}`) || 0;

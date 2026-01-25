@@ -1,11 +1,18 @@
 @import "tailwindcss";
-@plugin "@iconify/tailwind4";
 
 :root {
   --primary-color: #3c486b;
   --secondary-color: #f0f0f0;
   --terciary-color: #f9d949;
   --accent-color: #f45050;
+
+  /* 8-Bit Palette */
+  --retro-bg: #1a1a2e;
+  --retro-dark: #16213e;
+  --retro-primary: #e94560;
+  --retro-secondary: #0f3460; 
+  --retro-text: #eaeaea;
+  --retro-highlight: #533483;
 }
 
 @font-face {
@@ -18,6 +25,61 @@
 
 html {
   font-family: "VT323", system-ui, sans-serif;
-  background: var(--primary-color);
-  color: var(--terciary-color);
+  background: var(--retro-bg); /* Updated to retro bg */
+  color: var(--retro-text);
+}
+
+@layer utilities {
+    .font-vt323 {
+        font-family: "VT323", monospace;
+    }
+    
+    .pixel-borders {
+        box-shadow: 
+            -4px 0 0 0 var(--retro-dark),
+            4px 0 0 0 var(--retro-dark),
+            0 -4px 0 0 var(--retro-dark),
+            0 4px 0 0 var(--retro-dark);
+        margin: 4px;
+        @apply bg-gray-800;
+    }
+
+    .pixel-btn {
+        @apply px-4 py-2 bg-blue-600 text-white font-bold transition-transform active:translate-y-1;
+        font-family: "VT323", monospace;
+        font-size: 1.2rem;
+        box-shadow: 4px 4px 0px 0px rgba(0,0,0,0.5);
+    }
+    
+    .pixel-btn:hover {
+        @apply bg-blue-500;
+        transform: translate(-1px, -1px);
+        box-shadow: 6px 6px 0px 0px rgba(0,0,0,0.5);
+    }
+
+    .pixel-card {
+        @apply border-2 border-gray-700 bg-gray-900/80;
+        box-shadow: 4px 4px 0px 0px var(--retro-dark);
+    }
+}
+
+.crt-overlay {
+    background: linear-gradient(
+        rgba(18, 16, 16, 0) 50%,
+        rgba(0, 0, 0, 0.1) 50%
+    ),
+    linear-gradient(
+        90deg,
+        rgba(255, 0, 0, 0.03),
+        rgba(0, 255, 0, 0.01),
+        rgba(0, 0, 255, 0.03)
+    );
+    background-size: 100% 3px, 3px 100%;
+    pointer-events: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 9999;
 }

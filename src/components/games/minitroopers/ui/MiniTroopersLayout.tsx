@@ -5,15 +5,18 @@ import TrooperCard from './TrooperCard';
 import TrooperProfile from './TrooperProfile';
 import BattleArena from './BattleArena';
 import RecruitmentCenter from './RecruitmentCenter';
-import type { Trooper, BattleResult, Player, BattleHistoryEntry } from '@/logic/minitroopers/types';
+import type { BattleResult, Player, BattleHistoryEntry, TrooperData } from '@/logic/minitroopers/types';
+import { Trooper } from '@/logic/minitroopers/classes/Trooper';
 import { useTranslation } from '@/logic/minitroopers/i18n';
 import { simulateBattle, calculateSquadPower } from '@/logic/minitroopers/combat';
 import BattleSimulatorView from './BattleSimulatorView';
 import { saveGame, loadGame } from '@/logic/minitroopers/storage';
-import { generateRandomTrooper, generateRat, generateSpecificTrooper, recalculateTrooperHp } from '@/logic/minitroopers/generators';
+import { generateRandomTrooper, generateRat, generateSpecificTrooper, instantiateTrooper } from '@/logic/minitroopers/generators';
 import { getRandomSkill, getSkillsByLevel } from '@/logic/minitroopers/skills';
 import { getSkillChoices, applyLevelUp } from '@/logic/minitroopers/leveler';
 import { v4 as uuidv4 } from 'uuid';
+import { Loader } from '@/components/ui/Loader';
+// import { GameLayout } from '@/layouts/GameLayout';
 
 // MOCK OPPONENTS REMOVED - Using Dynamic Generation
 
@@ -38,7 +41,11 @@ const MiniTroopersLayout: React.FC = () => {
             setPlayer(savedState);
             if (savedState.troopers.length > 0) {
                 // Migration: Recalculate HP for all troopers to ensure consistency
-                savedState.troopers = savedState.troopers.map(t => recalculateTrooperHp(t));
+                savedState.troopers = savedState.troopers.map(t => {
+                    const instance = instantiateTrooper(t);
+                    instance.recalculateStats();
+                    return instance;
+                });
                 
                 setSelectedTrooperId(savedState.troopers[0].id);
             }
@@ -128,9 +135,11 @@ const MiniTroopersLayout: React.FC = () => {
             return getCampaignOpponent(stage);
         } else if (type === 'easy_money') {
             // Very weak, high reward
+        } else if (type === 'easy_money') {
+            // Very weak, high reward
             return [
-                { id: 'dummy1', name: 'Training Dummy', class: 'Recruit', team: 'B', isDead: false, skills: [], level: 1, attributes: { hp: 10, maxHp: 10, initiative: 1, range: 1, damage: 0, aim: 0, dodge: 0, armor: 0, critChance: 0, speed: 10 }, ammo: {}, cooldown: 0, disarmed: [] },
-                { id: 'dummy2', name: 'Training Dummy', class: 'Recruit', team: 'B', isDead: false, skills: [], level: 1, attributes: { hp: 10, maxHp: 10, initiative: 1, range: 1, damage: 0, aim: 0, dodge: 0, armor: 0, critChance: 0, speed: 10 }, ammo: {}, cooldown: 0, disarmed: [] }
+                instantiateTrooper({ id: 'dummy1', name: 'Training Dummy', class: 'Recruit', team: 'B', isDead: false, skills: [], level: 1, attributes: { hp: 10, maxHp: 10, initiative: 1, range: 1, damage: 0, aim: 0, dodge: 0, armor: 0, critChance: 0, speed: 10 }, ammo: {}, cooldown: 0, disarmed: [] }),
+                instantiateTrooper({ id: 'dummy2', name: 'Training Dummy', class: 'Recruit', team: 'B', isDead: false, skills: [], level: 1, attributes: { hp: 10, maxHp: 10, initiative: 1, range: 1, damage: 0, aim: 0, dodge: 0, armor: 0, critChance: 0, speed: 10 }, ammo: {}, cooldown: 0, disarmed: [] })
             ];
         } else if (type === 'progressive_rats') {
             // Rats Swarm: 2 Rats + 1 per 50 power
@@ -150,13 +159,31 @@ const MiniTroopersLayout: React.FC = () => {
     const handleStartBattle = (battleType: string) => {
         if (!player) return;
         
-        const myPower = calculateSquadPower(player.troopers);
+        const myPower = calculateSquadPower(player.troopers as Trooper[]);
         const opponentSquad = generateOpponent(battleType, myPower);
         
         
-        // Deep copy to avoid mutating initial state across battles
-        const mySquad = player.troopers.map(t => ({ ...t, isDead: false, attributes: { ...t.attributes, hp: t.attributes.maxHp } }));
-        const enemySquad = opponentSquad.map(t => ({ ...t, team: 'B' as const, isDead: false, attributes: { ...t.attributes, hp: t.attributes.maxHp } }));
+        // Deep copy via clone/instantiate to avoid mutating initial state across battles
+        const mySquad = player.troopers.map(t => {
+            if (t instanceof Trooper) return t.clone();
+            return instantiateTrooper(t);
+        });
+        
+        // Ensure HP is full
+        mySquad.forEach(t => t.attributes.hp = t.attributes.maxHp);
+
+        const enemySquad = opponentSquad.map(t => {
+             // Clone first
+             let clone: Trooper;
+             if (t instanceof Trooper) clone = t.clone();
+             else clone = instantiateTrooper(t);
+
+             // Set Team B
+             clone.team = 'B';
+             // Full HP (just in case)
+             clone.attributes.hp = clone.attributes.maxHp;
+             return clone;
+        });
 
         // Store for visualization (Use enemySquad which has correct Team B assignment)
         setCurrentOpponent(enemySquad);
@@ -214,10 +241,9 @@ const MiniTroopersLayout: React.FC = () => {
                         if (t.id === trooperId) {
                             // Use centralized leveler logic
                             const choices = getSkillChoices(t);
-                            return {
-                                ...t,
-                                pendingChoices: choices
-                            };
+                            const clone = t instanceof Trooper ? t.clone() : instantiateTrooper(t);
+                            clone.pendingChoices = choices;
+                            return clone;
                         }
                         return t;
                     })
@@ -234,10 +260,12 @@ const MiniTroopersLayout: React.FC = () => {
                 ...prev,
                 troopers: prev.troopers.map(t => {
                     if (t.id === trooperId) {
-                        const upgraded = applyLevelUp(t, skill);
+                        const upgradedData = applyLevelUp(t, skill);
                         // Ensure stat consistency and clear pending choices
-                        const recalculated = recalculateTrooperHp(upgraded);
-                        return { ...recalculated, pendingChoices: undefined };
+                        const instance = instantiateTrooper(upgradedData);
+                        instance.recalculateStats();
+                        instance.pendingChoices = undefined;
+                        return instance;
                     }
                     return t;
                 })
@@ -284,7 +312,9 @@ const MiniTroopersLayout: React.FC = () => {
                     ...prev,
                     troopers: prev.troopers.map(t => {
                         if (t.id === selectedTrooperId) {
-                            return { ...t, tactics };
+                            const clone = t instanceof Trooper ? t.clone() : instantiateTrooper(t);
+                            clone.tactics = tactics;
+                            return clone;
                         }
                         return t;
                     })
@@ -293,207 +323,215 @@ const MiniTroopersLayout: React.FC = () => {
         }
     };
 
-    if (!player) return <div className="text-white">Loading...</div>;
+    if (!player) return (
+        <div className="flex items-center justify-center min-h-[800px] bg-gray-900 text-white rounded-xl">
+             <Loader text="Initializing Headquarters..." size="large" />
+        </div>
+    );
 
     const selectedTrooper = player.troopers.find(t => t.id === selectedTrooperId);
 
     return (
-        <div className="flex flex-col lg:flex-row min-h-[800px] bg-gray-900 text-white rounded-xl overflow-hidden shadow-2xl border border-gray-800 font-sans w-full max-w-[1600px] mx-auto">
-            {/* Sidebar */}
-            <div className="w-80 bg-gray-950 flex flex-col border-r border-gray-800 shrink-0">
-                {/* Profile / Header */}
-                <div className="p-4 border-b border-gray-900 bg-gray-950">
-                     <h1 className="text-xl font-black text-gray-200 tracking-tighter uppercase italic">MINI TROOPERS</h1>
-                     <div className="flex justify-between items-center mt-2">
-                        <div className="text-yellow-500 font-bold text-sm">💰 {player.gold}</div>
-                        <div className="flex items-center gap-2">
-                            <button 
-                                onClick={() => changeLanguage(lang === 'en' ? 'es' : 'en')}
-                                className="text-xs bg-gray-800 text-gray-400 hover:text-white px-2 py-1 rounded border border-gray-700 uppercase font-bold transition-colors"
+        // <GameLayout> removed to avoid double wrapping with index.astro
+        <div className="w-full flex justify-center">
+            <div className="flex flex-col lg:flex-row h-[800px] bg-gray-900 text-white rounded-xl overflow-hidden shadow-2xl border border-gray-800 font-vt323 w-full max-w-[1600px] mx-auto">
+                {/* Sidebar */}
+                <div className="w-80 bg-gray-950 flex flex-col border-r border-gray-800 shrink-0">
+                    <div className="p-4 border-b border-gray-900 bg-gray-950">
+                         <h1 className="text-3xl text-gray-200 tracking-tighter uppercase italic font-vt323 font-bold">MINI TROOPERS</h1>
+                         <div className="flex justify-between items-center mt-2">
+                            <div className="text-yellow-500 font-bold text-sm">💰 {player.gold}</div>
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={() => changeLanguage(lang === 'en' ? 'es' : 'en')}
+                                    className="text-xs bg-gray-800 text-gray-400 hover:text-white px-2 py-1 rounded border border-gray-700 uppercase font-bold transition-colors"
+                                >
+                                    {lang.toUpperCase()}
+                                </button>
+                                <button onClick={handleResetData} className="text-xs text-red-900 hover:text-red-500 uppercase font-bold">Res</button>
+                            </div>
+                         </div>
+                    </div>
+
+                    <div className="flex border-b border-gray-800">
+                        {['BATTLE', 'HISTORY'].map((view) => (
+                            <button
+                                key={view}
+                                onClick={() => setCurrentView(view as any)}
+                                className={`flex-1 py-3 text-lg transition-colors ${
+                                    currentView === view || (view === 'BATTLE' && currentView === 'SIMULATION')
+                                        ? 'bg-gray-800 text-white border-b-2 border-blue-500'
+                                        : 'text-gray-500 hover:text-gray-300 hover:bg-gray-900'
+                                }`}
                             >
-                                {lang.toUpperCase()}
+                                {view}
                             </button>
-                            <button onClick={handleResetData} className="text-xs text-red-900 hover:text-red-500 uppercase font-bold">Res</button>
-                        </div>
-                     </div>
-                </div>
-
-                {/* Navigation Tabs */}
-                <div className="flex border-b border-gray-800">
-                    {['BATTLE', 'HISTORY'].map((view) => (
-                        <button
-                            key={view}
-                            onClick={() => setCurrentView(view as any)}
-                            className={`flex-1 py-3 text-xs font-bold transition-colors ${
-                                currentView === view || (view === 'BATTLE' && currentView === 'SIMULATION')
-                                    ? 'bg-gray-800 text-white border-b-2 border-blue-500'
-                                    : 'text-gray-500 hover:text-gray-300 hover:bg-gray-900'
-                            }`}
-                        >
-                            {view}
-                        </button>
-                    ))}
-                </div>
-
-                {/* Squad List (Always Visible) */}
-                <div className="flex-1 overflow-y-auto p-3">
-                    <div className="flex justify-between items-end mb-2 px-1">
-                        <div className="flex justify-between w-full items-center">
-                             <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{player.name}</span>
-                             <span className="text-xs font-bold text-yellow-500">PWR {calculateSquadPower(player.troopers)}</span>
-                        </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 gap-2">
-                        {player.troopers.map(trooper => (
-                            <TrooperCard 
-                                key={trooper.id} 
-                                trooper={trooper} 
-                                isSelected={selectedTrooperId === trooper.id && currentView === 'HQ'}
-                                onClick={() => {
-                                    setSelectedTrooperId(trooper.id);
-                                    if(currentView !== 'HQ') setCurrentView('HQ');
-                                }}
-                                t={t}
-                            />
                         ))}
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-3">
+                        <div className="flex justify-between items-end mb-2 px-1">
+                            <div className="flex justify-between w-full items-center">
+                                 <span className="text-lg text-gray-400 uppercase tracking-widest">{player.name}</span>
+                                 <span className="text-lg text-yellow-500">PWR {calculateSquadPower(player.troopers as Trooper[])}</span>
+                            </div>
+                        </div>
                         
-                         <button 
-                            onClick={handleEnterRecruit} 
-                            className="w-full mt-2 bg-blue-900/40 text-blue-400 hover:text-white hover:bg-blue-800 border border-blue-900/50 rounded py-2 text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2"
-                        >
-                            + RECRUIT UNIT
-                        </button>
+                        <div className="grid grid-cols-1 gap-2">
+                            {player.troopers.map(trooper => (
+                                <TrooperCard 
+                                    key={trooper.id} 
+                                    trooper={trooper} 
+                                    isSelected={selectedTrooperId === trooper.id && currentView === 'HQ'}
+                                    onClick={() => {
+                                        setSelectedTrooperId(trooper.id);
+                                        if(currentView !== 'HQ') setCurrentView('HQ');
+                                    }}
+                                    t={t}
+                                />
+                            ))}
+                            
+                             <button 
+                                onClick={handleEnterRecruit} 
+                                className="w-full mt-2 bg-blue-900/40 text-blue-400 hover:text-white hover:bg-blue-800 border border-blue-900/50 rounded py-2 text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2"
+                            >
+                                + RECRUIT UNIT
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            {/* Main Content */}
-            <div className={`flex-1 bg-gray-900 p-6 lg:p-8 relative flex flex-col ${currentView === 'SIMULATION' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
-                 {/* Background Pattern */}
-                <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#4b5563 1px, transparent 1px)', backgroundSize: '24px 24px' }}></div>
+                {/* Main Content */}
+                <div className={`flex-1 bg-gray-900 p-6 lg:p-8 relative flex flex-col ${currentView === 'SIMULATION' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+                    <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#4b5563 1px, transparent 1px)', backgroundSize: '24px 24px' }}></div>
 
-                <div className="relative z-10 flex-1">
-                    {currentView === 'HQ' && selectedTrooper && (
-                        <div className="max-w-5xl mx-auto">
-                            <h2 className="text-3xl font-black mb-8 text-white tracking-tight flex items-center gap-4">
-                                <span className="text-blue-500">/</span> {t('trooper_profile')}
-                            </h2>
-                            <TrooperProfile 
-                                trooper={selectedTrooper} 
-                                gold={player.gold}
-                                onUpgrade={(cost) => handleUpgradeTrooper(selectedTrooper.id, cost)}
-                                t={t}
-                                upgradeCostCalculator={(level) => Math.floor(5 * Math.pow(1.3, level))}
-                                onUpdateTactics={handleUpdateTactics}
-                                onSelectSkill={(skill) => handleSelectSkill(selectedTrooper.id, skill)}
-                                onRename={(newName) => {
-                                    if (player) {
-                                        setPlayer({
-                                            ...player,
-                                            troopers: player.troopers.map(t => 
-                                                t.id === selectedTrooper.id ? { ...t, name: newName } : t
-                                            )
-                                        });
-                                    }
-                                }}
-                            />
-                        </div>
-                    )}
-                    
-                    {currentView === 'RECRUIT' && (
-                        <div className="max-w-5xl mx-auto">
-                            <RecruitmentCenter 
-                                candidates={recruitCandidates}
-                                onRecruit={handleRecruit}
-                                recruitCostCalculator={(count) => Math.floor(50 * Math.pow(1.5, count))}
-                                currentCount={player.troopers.length}
-                                canAfford={(cost) => player.gold >= cost}
-                                t={t}
-                            />
-                        </div>
-                    )}
-                    
-                    {currentView === 'BATTLE' && (
-                        <div className="max-w-6xl mx-auto">
-                            <BattleArena 
-                                onStartBattle={handleStartBattle}
-                                t={t} 
-                                playerPower={calculateSquadPower(player.troopers)}
-                                getCampaignOpponent={getCampaignOpponent}
-                             />
-                        </div>
-                    )}
-
-                    {currentView === 'SIMULATION' && battleResult && (
-                        <div className="flex-1 min-h-0 flex flex-col">
-                             <div className="h-16 bg-gray-950/50 border-b border-gray-800 flex items-center px-6 mb-4 rounded-xl shrink-0">
-                                <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
-                                    <span className="text-red-500">⚔️</span> {t('battle_simulation') || 'BATTLE SIMULATION'}
+                    <div className="relative z-10 flex-1">
+                        {currentView === 'HQ' && selectedTrooper && (
+                            <div className="max-w-5xl mx-auto">
+                                <h2 className="text-3xl font-black mb-8 text-white tracking-tight flex items-center gap-4">
+                                    <span className="text-blue-500">/</span> {t('trooper_profile')}
                                 </h2>
-                             </div>
-                             <BattleSimulatorView
-                                 battleResult={battleResult}
-                                 mySquad={currentView === 'SIMULATION' && battleResult ? (battleResult as any).mySquadSnapshot || player.troopers : player.troopers}
-                                 opponentSquad={currentView === 'SIMULATION' && battleResult ? (battleResult as any).opponentSquadSnapshot || currentOpponent : currentOpponent}
-                                 onClose={() => setCurrentView('BATTLE')}
-                                 backLabel="Back to Arena"
-                             />
-                        </div>
-                    )}
+                                <TrooperProfile 
+                                    trooper={selectedTrooper} 
+                                    gold={player.gold}
+                                    onUpgrade={(cost) => handleUpgradeTrooper(selectedTrooper.id, cost)}
+                                    t={t}
+                                    upgradeCostCalculator={(level) => Math.floor(5 * Math.pow(1.3, level))}
+                                    onUpdateTactics={handleUpdateTactics}
+                                    onSelectSkill={(skill) => handleSelectSkill(selectedTrooper.id, skill)}
+                                    onRename={(newName) => {
+                                        if (player) {
+                                            setPlayer({
+                                                ...player,
+                                                troopers: player.troopers.map(t => {
+                                                    if (t.id === selectedTrooper.id) {
+                                                        const clone = t instanceof Trooper ? t.clone() : instantiateTrooper(t);
+                                                        clone.name = newName;
+                                                        return clone;
+                                                    }
+                                                    return t;
+                                                })
+                                            });
+                                        }
+                                    }}
+                                />
+                            </div>
+                        )}
+                        
+                        {currentView === 'RECRUIT' && (
+                            <div className="max-w-5xl mx-auto">
+                                <RecruitmentCenter 
+                                    candidates={recruitCandidates}
+                                    onRecruit={handleRecruit}
+                                    recruitCostCalculator={(count) => Math.floor(50 * Math.pow(1.5, count))}
+                                    currentCount={player.troopers.length}
+                                    canAfford={(cost) => player.gold >= cost}
+                                    t={t}
+                                />
+                            </div>
+                        )}
+                        
+                        {currentView === 'BATTLE' && (
+                            <div className="max-w-6xl mx-auto">
+                                <BattleArena 
+                                    onStartBattle={handleStartBattle}
+                                    t={t} 
+                                    playerPower={calculateSquadPower(player.troopers as Trooper[])}
+                                    getCampaignOpponent={getCampaignOpponent}
+                                 />
+                            </div>
+                        )}
 
-                    {currentView === 'HISTORY' && (
-                        <div className="max-w-4xl mx-auto">
-                            <h2 className="text-3xl font-black text-white mb-6 flex items-center gap-3">
-                                <span className="text-gray-500">📜</span> {t('battle_history') || 'Battle History'}
-                            </h2>
-                            
-                            {player.history && player.history.length > 0 ? (
-                                <div className="space-y-4">
-                                    {player.history.map(entry => (
-                                        <div key={entry.id} className="bg-gray-800 p-4 rounded-xl border border-gray-700 flex justify-between items-center hover:bg-gray-750 transition">
-                                            <div>
-                                                <div className="font-bold text-lg text-white">{entry.opponentName}</div>
-                                                <div className="text-xs text-gray-500">{new Date(entry.date).toLocaleString()}</div>
-                                            </div>
-                                            <div className="flex items-center gap-4">
-                                                <div className={`px-3 py-1 rounded font-bold text-sm ${entry.result === 'VICTORY' ? 'bg-green-900/50 text-green-400 border border-green-800' : 'bg-red-900/50 text-red-400 border border-red-800'}`}>
-                                                    {entry.result}
+                        {currentView === 'SIMULATION' && battleResult && (
+                            <div className="flex-1 min-h-0 flex flex-col">
+                                 <div className="h-16 bg-gray-950/50 border-b border-gray-800 flex items-center px-6 mb-4 rounded-xl shrink-0">
+                                    <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
+                                        <span className="text-red-500">⚔️</span> {t('battle_simulation') || 'BATTLE SIMULATION'}
+                                    </h2>
+                                 </div>
+                                 <BattleSimulatorView
+                                     battleResult={battleResult}
+                                     mySquad={currentView === 'SIMULATION' && battleResult ? (battleResult as any).mySquadSnapshot || player.troopers : player.troopers}
+                                     opponentSquad={currentView === 'SIMULATION' && battleResult ? (battleResult as any).opponentSquadSnapshot || currentOpponent : currentOpponent}
+                                     onClose={() => setCurrentView('BATTLE')}
+                                     backLabel="Back to Arena"
+                                 />
+                            </div>
+                        )}
+
+                        {currentView === 'HISTORY' && (
+                            <div className="max-w-4xl mx-auto">
+                                <h2 className="text-3xl font-black text-white mb-6 flex items-center gap-3">
+                                    <span className="text-gray-500">📜</span> {t('battle_history') || 'Battle History'}
+                                </h2>
+                                
+                                {player.history && player.history.length > 0 ? (
+                                    <div className="space-y-4">
+                                        {player.history.map(entry => (
+                                            <div key={entry.id} className="bg-gray-800 p-4 rounded-xl border border-gray-700 flex justify-between items-center hover:bg-gray-750 transition">
+                                                <div>
+                                                    <div className="font-bold text-lg text-white">{entry.opponentName}</div>
+                                                    <div className="text-xs text-gray-500">{new Date(entry.date).toLocaleString()}</div>
                                                 </div>
-                                                {entry.mySquadSnapshot && entry.opponentSquadSnapshot && (
-                                                    <button 
-                                                        onClick={() => {
-                                                            setBattleResult({
-                                                                winner: entry.result === 'VICTORY' ? 'A' : 'B', // Approximate, logic might be needed if draw
-                                                                log: entry.log,
-                                                                survivorsA: [], // Not needed for replay usually
-                                                                survivorsB: [],
-                                                                // Attach snapshots to result-like object or handle via separate state?
-                                                                // Let's cheat and attach to battleResult state which is passed to game
-                                                                ...({ mySquadSnapshot: entry.mySquadSnapshot, opponentSquadSnapshot: entry.opponentSquadSnapshot } as any)
-                                                            } as any);
-                                                            // We need to set currentOpponent to avoid "opponent not found" errors/mocks if we used them? 
-                                                            // Actually MiniTroopersGame uses props. 
-                                                            // But we need to ensure the game component receives these.
-                                                            // See change above in SIMULATION view for how we pass props.
-                                                            setCurrentView('SIMULATION');
-                                                        }}
-                                                        className="px-3 py-1 bg-blue-900/50 text-blue-400 border border-blue-800 rounded font-bold text-sm hover:bg-blue-800 hover:text-white transition"
-                                                    >
-                                                        ▶ {t('replay') || 'Replay'}
-                                                    </button>
-                                                )}
+                                                <div className="flex items-center gap-4">
+                                                    <div className={`px-3 py-1 rounded font-bold text-sm ${entry.result === 'VICTORY' ? 'bg-green-900/50 text-green-400 border border-green-800' : 'bg-red-900/50 text-red-400 border border-red-800'}`}>
+                                                        {entry.result}
+                                                    </div>
+                                                    {entry.mySquadSnapshot && entry.opponentSquadSnapshot && (
+                                                        <button 
+                                                            onClick={() => {
+                                                                setBattleResult({
+                                                                    winner: entry.result === 'VICTORY' ? 'A' : 'B', // Approximate, logic might be needed if draw
+                                                                    log: entry.log,
+                                                                    survivorsA: [], // Not needed for replay usually
+                                                                    survivorsB: [],
+                                                                    // Attach snapshots to result-like object or handle via separate state?
+                                                                    // Let's cheat and attach to battleResult state which is passed to game
+                                                                    ...({ mySquadSnapshot: entry.mySquadSnapshot, opponentSquadSnapshot: entry.opponentSquadSnapshot } as any)
+                                                                } as any);
+                                                                // We need to set currentOpponent to avoid "opponent not found" errors/mocks if we used them? 
+                                                                // Actually MiniTroopersGame uses props. 
+                                                                // But we need to ensure the game component receives these.
+                                                                // See change above in SIMULATION view for how we pass props.
+                                                                setCurrentView('SIMULATION');
+                                                            }}
+                                                            className="px-3 py-1 bg-blue-900/50 text-blue-400 border border-blue-800 rounded font-bold text-sm hover:bg-blue-800 hover:text-white transition"
+                                                        >
+                                                            ▶ {t('replay') || 'Replay'}
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-center py-12 border-2 border-dashed border-gray-800 rounded-xl">
-                                    <span className="text-gray-500 text-lg">{t('no_battles_yet') || 'No battles recorded yet.'}</span>
-                                </div>
-                            )}
-                        </div>
-                    )}
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-12 border-2 border-dashed border-gray-800 rounded-xl">
+                                        <span className="text-gray-500 text-lg">{t('no_battles_yet') || 'No battles recorded yet.'}</span>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>

@@ -1,13 +1,12 @@
 ---
-import Layout from "@/layouts/Layout.astro";
+import GameLayout from "@/layouts/GameLayout.astro";
 import MiniTroopersLayout from "@/components/games/minitroopers/ui/MiniTroopersLayout";
 ---
 
-<Layout
+<GameLayout
     title="Mini Troopers - MiniPlayers"
     description="Estrategia y combate en Mini Troopers. Recluta tu ejército, entrénalo y lucha contra otros jugadores."
     image="/images/games/minitroopers/placeholder.webp"
-    fullWidth={true}
 >
     <MiniTroopersLayout client:only="react" />
-</Layout>
+</GameLayout>

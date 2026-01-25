@@ -1,4 +1,5 @@
-import type { Trooper, Skill } from './types';
+import type { Skill } from './types';
+import type { Trooper } from './classes/Trooper';
 import { SKILLS, getRandomSkill, getSkillsByLevel } from './skills';
 import { Specialization } from './classes/Skill';
 
@@ -9,7 +10,7 @@ import { Specialization } from './classes/Skill';
  */
 export const getSkillChoices = (trooper: Trooper): Skill[] => {
     const targetLevel = trooper.level + 1;
-    const numChoices = trooper.skills.some(s => s.id === 'smart') ? 3 : 2;
+    const numChoices = trooper.skills.some((s: Skill) => s.id === 'smart') ? 3 : 2;
     const choices: Skill[] = [];
 
     // Filter already possessed skills to avoid duplicates
@@ -19,10 +20,11 @@ export const getSkillChoices = (trooper: Trooper): Skill[] => {
     if (targetLevel === 6) {
         // If the trooper ALREADY has a defined Class that matches a Specialization 
         // (e.g. created as "Spy"), force that Specialization.
+        // Recruits should NOT trigger this.
         const targetSpecId = trooper.class.toLowerCase().replace(/ /g, '_');
         const matchingSpec = SKILLS.find(s => s.id === targetSpecId && s instanceof Specialization);
 
-        if (matchingSpec) {
+        if (matchingSpec && trooper.class !== 'Recruit') {
             return [matchingSpec];
         }
 

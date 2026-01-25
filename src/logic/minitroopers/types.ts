@@ -45,10 +45,10 @@ export interface TrooperVehicle {
     armor: number;
 }
 
-export interface Trooper {
+export interface TrooperData {
     id: string;
     name: string;
-    class: TrooperClass;
+    class: string;
     team: 'A' | 'B';
     attributes: TrooperAttributes;
     skills: Skill[];
@@ -107,8 +107,8 @@ export interface BattleLogEntry {
 export interface BattleResult {
     winner: 'A' | 'B' | 'Draw';
     log: BattleLogEntry[];
-    survivorsA: Trooper[];
-    survivorsB: Trooper[];
+    survivorsA: TrooperData[];
+    survivorsB: TrooperData[];
 }
 
 export interface BattleHistoryEntry {
@@ -117,15 +117,15 @@ export interface BattleHistoryEntry {
     opponentName: string;
     result: 'VICTORY' | 'DEFEAT';
     log: BattleLogEntry[];
-    mySquadSnapshot?: Trooper[];
-    opponentSquadSnapshot?: Trooper[];
+    mySquadSnapshot?: TrooperData[];
+    opponentSquadSnapshot?: TrooperData[];
 }
 
 export interface Player {
     id: string;
     name: string;
     gold: number;
-    troopers: Trooper[];
+    troopers: TrooperData[];
     lastPlayed: number;
     history: BattleHistoryEntry[];
 }
