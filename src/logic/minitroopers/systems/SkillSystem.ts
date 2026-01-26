@@ -13,6 +13,7 @@ export interface BattleContext {
     reserveB: Trooper[];
     jammedWeapons: Map<string, string[]>; // TrooperID -> WeaponIDs
     resolveWeaponShot?: (actor: Trooper, target: Trooper, weapon: Weapon | any, context: BattleContext) => void;
+    applyDamage?: (target: Trooper, damage: number, context: BattleContext, source?: Trooper) => void;
 }
 
 export interface SkillImplementation {

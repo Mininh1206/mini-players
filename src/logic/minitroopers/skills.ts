@@ -90,10 +90,11 @@ export const SKILLS: Skill[] = [
     // Rocket: Dam:8-15, Rng:100, Crit:1, Aim:80, Rec:120, Cap:1, Shots:3
     new Launcher('rocket_launcher', 'Rocket Launcher', 'Rapid fire rockets.', '🚀', 8, 1, 100, 1, 80, 120, 1, 2, 50, 5, 0, 15, 3),
 
-    // Weapons - Melee
+    // Weapons - Melee (Unlimited ammo - no reload needed)
     // Knife: Dam:2-4, Rng:1, Crit:10, Aim:120, Rec:40
-    new Melee('knife', 'Knife', 'Close quarters combat.', '🔪', 2, 1, 1, 10, 120, 40, 999, 0, 0, 0, 4, 999),
-    new Melee('fists', 'Fists', 'Good old knuckle sandwich.', '👊', 1, 1, 1, 5, 100, 20, 999, 0, 0, 0, 3, 999),
+    new Melee('knife', 'Knife', 'Close quarters combat.', '🔪', 2, 1, 1, 10, 120, 40, 0, 0, 4),
+    // Fists: Dam:1-3, Rng:1, Crit:5, Aim:100, Rec:20
+    new Melee('fists', 'Fists', 'Good old knuckle sandwich.', '👊', 1, 1, 1, 5, 100, 20, 0, 0, 3),
 
     // Ammunition
     new Equipment('explosive_shells', 'Explosive Shells', 'Bullets explode on impact.', '💥', 99),
@@ -222,3 +223,29 @@ export const getSkillsByLevel = (level: number): Skill[] => {
 export const getDefaultWeapons = (): Weapon[] => {
     return SKILLS.filter(s => ['pistol', 'shotgun', 'assault_rifle', 'sniper_rifle'].includes(s.id)) as Weapon[];
 };
+
+// --- Vehicle Weapons ---
+
+export class VehicleMachineGun extends Weapon {
+    constructor() {
+        super('machine_gun_vehicle', 'Machine Gun', 'Vehicle mounted machine gun', 'gun_icon', 5, 5, 8, 5, 90, 10, 50, 0, 0, 0, 0, 0, 100);
+    }
+}
+
+export class TwinMachineGun extends Weapon {
+    constructor() {
+        super('twin_machine_gun', 'Twin Machine Gun', 'Heli mounted heavy machine guns', 'gun_icon', 6, 8, 8, 5, 85, 10, 80, 0, 0, 0, 0, 0, 200);
+    }
+}
+
+export class LightCannon extends Weapon {
+    constructor() {
+        super('light_cannon', 'Light Cannon', 'Tank main gun', 'target_icon', 30, 1, 10, 10, 80, 40, 1, 1, 20, 3, 0, 0, 20); // Area 1
+    }
+}
+
+export class HeavyCannon extends Weapon {
+    constructor() {
+        super('heavy_cannon', 'Heavy Cannon', 'Heavy Tank main gun', 'target_icon', 50, 1, 10, 15, 75, 50, 1, 2, 40, 4, 0, 0, 15); // Area 2, Stun 40
+    }
+}

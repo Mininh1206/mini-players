@@ -63,7 +63,7 @@ export const getSkillChoices = (trooper: Trooper): Skill[] => {
  * @returns A new Trooper object with updated stats and skills.
  */
 export const applyLevelUp = (trooper: Trooper, skill: Skill): Trooper => {
-    const newTrooper = { ...trooper };
+    const newTrooper = trooper.clone();
     
     // Add Skill
     newTrooper.skills = [...newTrooper.skills, skill];

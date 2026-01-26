@@ -263,12 +263,14 @@ const MiniTroopersLayout: React.FC = () => {
                 troopers: prev.troopers.map(t => {
                     if (t.id === trooperId) {
                         const instance = t instanceof Trooper ? t : instantiateTrooper(t);
-                        const upgradedData = applyLevelUp(instance, skill);
-                        // Ensure stat consistency and clear pending choices
-                        const newInstance = instantiateTrooper(upgradedData);
-                        instance.recalculateStats();
-                        instance.pendingChoices = undefined;
-                        return instance;
+                        // applyLevelUp returns a cloned instance with prototype
+                        const upgradedInstance = applyLevelUp(instance, skill);
+                        
+                        // Recalculate stats on the NEW instance
+                        upgradedInstance.recalculateStats();
+                        upgradedInstance.pendingChoices = undefined;
+                        
+                        return upgradedInstance;
                     }
                     return t;
                 })

@@ -30,7 +30,16 @@ describe('Sniper AI Behavior', () => {
             allTroopers: [sniper, target],
             deployedA: [sniper], deployedB: [target],
             reserveA: [], reserveB: [],
-            jammedWeapons: new Map()
+            jammedWeapons: new Map(),
+            resolveWeaponShot: (source, target, weapon, ctx) => {
+                ctx.log.push({
+                    time: ctx.time,
+                    actorId: source.id,
+                    actorName: source.name,
+                    action: 'attack',
+                    message: `Bang with ${weapon.name}`
+                });
+            }
         };
 
         const actionTaken = sniper.playTurn(context);

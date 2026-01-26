@@ -1,5 +1,7 @@
 import Phaser from 'phaser';
-import type { BattleResult, BattleLogEntry, Trooper } from '@/logic/minitroopers/types';
+import type { BattleResult, BattleLogEntry } from '@/logic/minitroopers/types';
+import { Trooper } from '@/logic/minitroopers/classes/Trooper';
+import { getDeploymentCost } from '@/logic/minitroopers/deployment';
 
 export class BattleScene extends Phaser.Scene {
     private battleResult: BattleResult;
@@ -22,13 +24,26 @@ export class BattleScene extends Phaser.Scene {
     private bgImage: Phaser.GameObjects.Image | null = null;
     
     // UI - Reserves
-    private reserveTextA: Phaser.GameObjects.Text | null = null;
-    private reserveTextB: Phaser.GameObjects.Text | null = null;
+    private timeText: Phaser.GameObjects.Text | null = null;
     private totalCountA: number = 0;
     private totalCountB: number = 0;
     private deployedCountA: number = 0;
     private deployedCountB: number = 0;
     private pendingJams: Map<string, string[]> = new Map();
+
+    // Bottom HUD - Team Stats
+    private hudContainer: Phaser.GameObjects.Container | null = null;
+    private teamAStatsText: Phaser.GameObjects.Text | null = null;
+    private teamBStatsText: Phaser.GameObjects.Text | null = null;
+    private deploymentA: number = 0;
+    private deploymentB: number = 0;
+    private communicationsA: number = 0;
+    private communicationsB: number = 0;
+    private sabotageA: number = 0;
+    private sabotageB: number = 0;
+    
+    // Top Right - Time & Speed
+    // private timeText: Phaser.GameObjects.Text | null = null; // Moved declaration
 
     constructor() {
         super('BattleScene');
@@ -49,16 +64,39 @@ export class BattleScene extends Phaser.Scene {
         this.currentTurnIndex = 0;
         this.battleTime = 0;
         this.processedLogs.clear();
-        this.currentTurnIndex = 0;
-        this.battleTime = 0;
-        this.processedLogs.clear();
         this.isPlayingTurn = false;
 
+        // Team Counts
         this.totalCountA = data.teamA?.length || 0;
         this.totalCountB = data.teamB?.length || 0;
         this.deployedCountA = 0;
         this.deployedCountB = 0;
         this.pendingJams.clear();
+
+        // Calculate Team Stats for HUD
+        // Note: These calculations duplicate logic from the battle simulator setup.
+        // Ideally, these values should be passed in `data`, but we calculate them here for display.
+        const getComms = (team: Trooper[]) => team.reduce((acc, t) => {
+            const comms = t.skills.find(s => s.id === 'comms_officer');
+            return acc + (comms ? 5 + (t.level || 1) : 0); // +5 base, +1 per level
+        }, 0);
+
+        const getSabotage = (team: Trooper[]) => team.reduce((acc, t) => {
+            const sab = t.skills.find(s => s.id === 'saboteur');
+            return acc + (sab ? 5 + (t.level || 1) : 0);
+        }, 0);
+
+        this.communicationsA = getComms(data.teamA || []);
+        this.communicationsB = getComms(data.teamB || []);
+        this.sabotageA = getSabotage(data.teamA || []);
+        this.sabotageB = getSabotage(data.teamB || []);
+        
+        // Deployment Calculation (simplified for display)
+        // In real logic, this depends on available slots vs cost.
+        // Here we just track deployed count vs total count in the top-left/right display,
+        // and points used in the HUD.
+        this.deploymentA = 0; // Points used
+        this.deploymentB = 0;
     }
 
     private speedMultiplier: number = 1;
@@ -99,10 +137,10 @@ export class BattleScene extends Phaser.Scene {
         // Actually, sticking to camera is better for UI.
         this.battleText.setScrollFactor(0);
 
-        // Reserve Counters
-        const style = { fontSize: '18px', color: '#ffffff', stroke: '#000000', strokeThickness: 3, fontStyle: 'bold' };
-        this.reserveTextA = this.add.text(20, 20, `Reserves: ${this.totalCountA}`, style).setScrollFactor(0).setOrigin(0, 0);
-        this.reserveTextB = this.add.text(780, 20, `Reserves: ${this.totalCountB}`, style).setScrollFactor(0).setOrigin(1, 0);
+        // Reserve Counters (Redundant with HUD - Removed to fix overlap)
+        // const style = ...
+        // this.reserveTextA = ...
+        // this.reserveTextB = ...
 
         // Listen for resize
         this.scale.on('resize', this.resize, this);
@@ -120,6 +158,9 @@ export class BattleScene extends Phaser.Scene {
         this.borderTop = this.add.rectangle(400, 0, 4000, 200, 0x000000).setDepth(1000).setOrigin(0.5, 1);
         this.borderBottom = this.add.rectangle(400, 600, 4000, 200, 0x000000).setDepth(1000).setOrigin(0.5, 0);
 
+        // Create Bottom HUD
+        this.createHUD();
+
         // Initial Resize to fit container
         this.scale.on('resize', this.resize, this);
         this.resize({ width: this.scale.width, height: this.scale.height });
@@ -129,6 +170,67 @@ export class BattleScene extends Phaser.Scene {
         // Let's say 1 simulation tick = 10ms real time (100 ticks = 1 sec).
         // Update loop handles this.
         this.battleTime = 0;
+    }
+
+    /**
+     * Create the bottom HUD bar showing team stats
+     * Layout: Team A stats (left) | Team B stats (right)
+     * Stats: 👤 Troopers, 🚀 Deployment, 📡 Communications, 🔧 Sabotage
+     */
+    private createHUD() {
+        const hudY = 570; // Near bottom of logical view (600)
+        const style = { 
+            fontSize: '14px', 
+            color: '#ffffff', 
+            stroke: '#000000', 
+            strokeThickness: 2,
+            fontStyle: 'bold'
+        };
+        
+        // Background bar
+        const hudBg = this.add.rectangle(400, hudY, 800, 40, 0x000000, 0.7);
+        hudBg.setDepth(900);
+        
+        // Team A Stats (left side)
+        this.teamAStatsText = this.add.text(20, hudY, this.formatTeamStats('A'), style)
+            .setOrigin(0, 0.5)
+            .setDepth(901);
+        
+        // Team B Stats (right side)
+        this.teamBStatsText = this.add.text(780, hudY, this.formatTeamStats('B'), style)
+            .setOrigin(1, 0.5)
+            .setDepth(901);
+        
+        // Top Right - Time Display (replaces center battle text)
+        this.timeText = this.add.text(780, 20, 'Time: 0', style)
+            .setOrigin(1, 0)
+            .setScrollFactor(0)
+            .setDepth(901);
+    }
+
+    /**
+     * Format team stats for HUD display
+     */
+    private formatTeamStats(team: 'A' | 'B'): string {
+        const count = team === 'A' ? this.totalCountA - this.deployedCountA : this.totalCountB - this.deployedCountB;
+        const deployed = team === 'A' ? this.deployedCountA : this.deployedCountB;
+        const comms = team === 'A' ? this.communicationsA : this.communicationsB;
+        const sabotage = team === 'A' ? this.sabotageA : this.sabotageB;
+        
+        // Format: 👤32  🚀+04  📡77  🔧100%
+        return `👤${deployed}/${count + deployed}  🚀${deployed}  📡${comms}  🔧${sabotage}`;
+    }
+
+    /**
+     * Update HUD stats during battle
+     */
+    private updateHUD() {
+        if (this.teamAStatsText) {
+            this.teamAStatsText.setText(this.formatTeamStats('A'));
+        }
+        if (this.teamBStatsText) {
+            this.teamBStatsText.setText(this.formatTeamStats('B'));
+        }
     }
 
     setSpeed(multiplier: number) {
@@ -186,6 +288,7 @@ export class BattleScene extends Phaser.Scene {
         this.battleTime += ticksToAdvance;
 
         this.updateBattleText(Math.floor(this.battleTime));
+        this.updateHUD(); // Sync HUD every frame (or could throttle)
 
         // Process Logs up to current time
         while (this.currentTurnIndex < this.battleResult.log.length) {
@@ -211,9 +314,10 @@ export class BattleScene extends Phaser.Scene {
     updateBattleText(time: number) {
          // Find recent message
          // This is tricky with continuous time. Maybe just show time.
-         const timePrefix = this.translations['time_prefix'] || 'Time: ';
-         this.battleText?.setText(`${timePrefix}${time}`);
-         this.battleText?.setDepth(1001);
+         // FIXED: Duplicate time display. This text is now only for major events (Start/End).
+         // const timePrefix = this.translations['time_prefix'] || 'Time: ';
+         // this.battleText?.setText(`${timePrefix}${time}`);
+         // this.battleText?.setDepth(1001);
     }
 
     // Removed processNextTurn and playBatchAnimations
@@ -435,17 +539,22 @@ export class BattleScene extends Phaser.Scene {
                              if (log.isCrit) {
                                  this.showFloatingText(target.x, target.y - 70, this.translations['crit_shout'] || "CRIT!", '#ff8800');
                              }
-                             this.updateHealth(target, log.damage || 0);
-                         }
-                         // onComplete called after bullet hits? Or immediately?
-                         // Better after hit for flow.
-                         if (!isRocket) onComplete(); // Rocket has explosion anim
-                         else this.time.delayedCall(300, onComplete);
-                     }
-                 });
-             }
-             return;
-         } else if (log.action === 'reload') {
+                              
+                              if (log.isVehicleHit) {
+                                  this.updateVehicleHealth(target, log.damage || 0);
+                              } else {
+                                  this.updateHealth(target, log.damage || 0);
+                              }
+                          }
+                          // onComplete called after bullet hits? Or immediately?
+                          // Better after hit for flow.
+                          if (!isRocket) onComplete(); // Rocket has explosion anim
+                          else this.time.delayedCall(300, onComplete);
+                      }
+                  });
+              }
+              return;
+          } else if (log.action === 'reload') {
              const weaponId = actor.getData('currentWeaponId');
               if (weaponId) {
                  const currentAmmo = actor.getData(`ammo_${weaponId}`) || 0;
@@ -458,6 +567,66 @@ export class BattleScene extends Phaser.Scene {
                  actor.setData('currentWeaponId', newWeaponId);
              }
              this.showFloatingText(actor.x, actor.y - 40, this.translations['switch_weapon'] || 'SWITCH!', '#ffaa00');
+             this.updateStatusVisuals(actor);
+             onComplete();
+             return;
+        } else if (log.action === 'jam_weapon') {
+             const victimId = log.targetId || log.actorId; 
+             const victim = this.troopers.get(victimId);
+             
+             if (victim) {
+                 const weaponId = log.data?.weaponId;
+                 if (weaponId) {
+                     const currentJams = victim.getData('jammedWeapons') || [];
+                     if (!currentJams.includes(weaponId)) {
+                         currentJams.push(weaponId);
+                         victim.setData('jammedWeapons', currentJams);
+                     }
+                 }
+                 this.showFloatingText(victim.x, victim.y - 60, this.translations['jammed'] || "JAMMED!", '#ff00ff');
+                 this.updateStatusVisuals(victim);
+             }
+             onComplete();
+             return;
+        } else if (log.action === 'use_equipment') {
+             // Target of the jam
+             const targetId = log.targetId || log.actorId; // Sometimes self (grenade fail?) or target
+             
+             // Wait, jam_weapon action usually has a target.
+             // combat.ts line 961: targetId: victim.id
+             // combat.ts line 559: actorId: actor.id (grenade shock self drop?) - checking combat.ts
+             // Line 559: unit.disarmed.push(unit.currentWeaponId); log... action 'jam_weapon'.
+             // So target is implicit "unit" which is `unit.id`. But the log uses `actorId` as the source of the grenade?
+             // checking combat.ts line 559 again in Step 467:
+             // log.push({ time, actorId: actor.id, ... action: 'jam_weapon', message: ... });
+             // It doesn't specify targetId! It assumes the message context.
+             // But valid structure needs targetId if it affects someone else.
+             // In splash damage (line 559), `unit` is the victim. `actor` is the thrower.
+             // The log line 559 acts on `unit`. It SHOULD have `targetId: unit.id`.
+             // Wait, line 559: `log.push({ time, actorId: actor.id, actorName: actor.name, action: 'jam_weapon', message: ... })`
+             // If targetId is missing, BattleScene won't know who dropped the weapon easily unless we parse message or fix backend.
+             
+             // FIX BACKEND: Ensure jam_weapon log has targetId.
+             // But for now, let's assume `targetId` is set in the log entry if it's a sabotage.
+             // Sabotage logic (line 953 in implementations.ts Step 454):
+             // targetId: victim.id. This is correct.
+             
+             // So for Sabotage, we use log.targetId.
+             const victimId = log.targetId || log.actorId; 
+             const victim = this.troopers.get(victimId);
+             
+             if (victim) {
+                 const weaponId = log.data?.weaponId;
+                 if (weaponId) {
+                     const currentJams = victim.getData('jammedWeapons') || [];
+                     if (!currentJams.includes(weaponId)) {
+                         currentJams.push(weaponId);
+                         victim.setData('jammedWeapons', currentJams);
+                     }
+                 }
+                 this.showFloatingText(victim.x, victim.y - 60, this.translations['jammed'] || "JAMMED!", '#ff00ff');
+                 this.updateStatusVisuals(victim);
+             }
              onComplete();
              return;
         }
@@ -506,6 +675,7 @@ export class BattleScene extends Phaser.Scene {
                      const jammed = target.getData('jammedWeapons') || [];
                      target.setData('jammedWeapons', [...jammed, log.data.weaponId]);
                      this.showFloatingText(target.x, target.y - 60, "JAMMED!", '#ff0000');
+                     this.updateStatusVisuals(target);
                  } else {
                      // Store for later deployment
                      const pending = this.pendingJams.get(log.targetId) || [];
@@ -519,6 +689,45 @@ export class BattleScene extends Phaser.Scene {
         // Catch-all for unhandled actions (shouldn't be reachable if all types handled)
         console.warn(`Unhandled action: ${log.action}`);
         onComplete();
+    }
+
+    private updateStatusVisuals(container: Phaser.GameObjects.Container) {
+        const currentWeaponId = container.getData('currentWeaponId');
+        const jammedWeapons = container.getData('jammedWeapons') || [];
+        const sabotagedWeapons = container.getData('sabotagedWeapons') || [];
+        
+        const isJammed = currentWeaponId && jammedWeapons.includes(currentWeaponId);
+        const isSabotaged = currentWeaponId && sabotagedWeapons.includes(currentWeaponId);
+        
+        // Jammed Icon
+        let jamIcon = container.getByName('jamIcon') as Phaser.GameObjects.Text;
+        
+        if (isJammed) {
+            if (!jamIcon) {
+                jamIcon = this.add.text(10, -50, '🚫', { fontSize: '16px' }).setOrigin(0.5);
+                jamIcon.setName('jamIcon');
+                container.add(jamIcon);
+            }
+        } else {
+            if (jamIcon) {
+                jamIcon.destroy();
+            }
+        }
+
+        // Sabotaged Icon
+        let sabIcon = container.getByName('sabIcon') as Phaser.GameObjects.Text;
+        
+        if (isSabotaged) {
+            if (!sabIcon) {
+                sabIcon = this.add.text(-10, -50, '⚠️', { fontSize: '16px' }).setOrigin(0.5);
+                sabIcon.setName('sabIcon');
+                container.add(sabIcon);
+            }
+        } else {
+            if (sabIcon) {
+                sabIcon.destroy();
+            }
+        }
     }
 
     handleDeploy(log: BattleLogEntry, onComplete: () => void) {
@@ -544,16 +753,21 @@ export class BattleScene extends Phaser.Scene {
             y = 100 + Math.floor(Math.random() * 400);
         }
         
-        // Update Reserve Counts
+        // Update Reserve Counts & Deployment Points
+        const cost = getDeploymentCost(trooper);
         if (isLeft) {
             this.deployedCountA++;
+            this.deploymentA += cost;
             const remaining = Math.max(0, this.totalCountA - this.deployedCountA);
             this.reserveTextA?.setText(`Reserves: ${remaining}`);
         } else {
             this.deployedCountB++;
+            this.deploymentB += cost;
             const remaining = Math.max(0, this.totalCountB - this.deployedCountB);
             this.reserveTextB?.setText(`Reserves: ${remaining}`);
         }
+
+        this.updateHUD(); // Immediate update on deploy
 
         this.createTrooperSprite(trooper, x, y, isLeft ? 0x00ff00 : 0xff0000, isLeft);
 
@@ -564,6 +778,12 @@ export class BattleScene extends Phaser.Scene {
             if (pending) {
                 container.setData('jammedWeapons', pending);
             }
+            // Sync Sabotage Data
+            if (trooper.sabotagedWeapons) {
+                container.setData('sabotagedWeapons', trooper.sabotagedWeapons);
+            }
+            
+            this.updateStatusVisuals(container);
 
             container.setAlpha(0);
             container.y -= 50;
@@ -588,6 +808,53 @@ export class BattleScene extends Phaser.Scene {
         }
 
         const container = this.add.container(x, y);
+
+        // Vehicle Graphics
+        if (trooper.vehicle) {
+            let vColor = 0x555555;
+            let width = 45;
+            let height = 30;
+            switch(trooper.vehicle.type) {
+                case 'light_tank': vColor = 0x556B2F; width = 70; height = 45; break;
+                case 'heavy_tank': vColor = 0x2F4F4F; width = 90; height = 60; break;
+                case 'motorcycle': vColor = 0x4682B4; width = 40; height = 20; break;
+                case 'helicopter': vColor = 0x708090; width = 80; height = 15; break;
+                case 'fighter_jet': vColor = 0xC0C0C0; width = 60; height = 10; break;
+            }
+            
+            // Draw Main Chassis
+            const chassis = this.add.rectangle(0, 15, width, height, vColor);
+            chassis.setName('vehicleChassis');
+            container.add(chassis);
+
+            if (trooper.vehicle.type.includes('tank')) {
+                 const turret = this.add.rectangle(0, 5, width * 0.6, height * 0.4, vColor);
+                 container.add(turret);
+            }
+            if (trooper.vehicle.type === 'helicopter') {
+                const rotor = this.add.rectangle(0, -10, width + 20, 4, 0x111111);
+                this.tweens.add({
+                    targets: rotor,
+                    scaleX: 0.1,
+                    yoyo: true,
+                    repeat: -1,
+                    duration: 50
+                });
+                container.add(rotor);
+            }
+
+            // Vehicle HP Bar (Blue)
+            const vHpBg = this.add.rectangle(0, 24, 40, 4, 0x000000);
+            const vHpBar = this.add.rectangle(0, 24, 40, 4, 0x0000ff);
+            vHpBg.setName('vehicleHpBg');
+            vHpBar.setName('vehicleHpBar');
+            container.add(vHpBg);
+            container.add(vHpBar);
+
+            container.setData('vehicleHpBar', vHpBar);
+            container.setData('vehicleMaxHp', trooper.vehicle.maxHp);
+            container.setData('vehicleHp', trooper.vehicle.hp);
+        }
 
         // Body
         const circle = this.add.circle(0, 0, 20, color);
@@ -626,6 +893,7 @@ export class BattleScene extends Phaser.Scene {
                  }
              });
              container.setData('currentWeaponId', trooper.currentWeaponId);
+             container.setData('jammedWeapons', trooper.jammedWeapons || []);
         }
 
 
@@ -738,18 +1006,27 @@ export class BattleScene extends Phaser.Scene {
 
         // Death check
         if (currentHp <= 0) {
+            // Immediate Visual Feedback
+            target.setAlpha(0.7);
+            const sprite = target.list.find(c => c instanceof Phaser.GameObjects.Sprite || c instanceof Phaser.GameObjects.Shape) as Phaser.GameObjects.Shape;
+            if (sprite) sprite.setFillStyle(0x444444); // Darken
+            
+            // Add Skull immediately
+            if (!target.getByName('deathSkull')) {
+                const skull = this.add.text(0, -50, '💀', { fontSize: '24px' }).setOrigin(0.5);
+                skull.setName('deathSkull');
+                target.add(skull);
+            }
+
             this.tweens.add({
                 targets: target,
                 alpha: 0,
                 y: target.y + 20,
+                angle: 90,
                 duration: 500,
                 delay: 200,
                 onComplete: () => {
                     target.destroy();
-                    // We don't remove from map immediately if we want to reference it? 
-                    // But for visual purposes it's gone.
-                    // If we remove it, handleDeploy slot logic needs to know.
-                    // We check `alpha > 0` in handleDeploy, so destroying it is fine.
                 }
             });
         } else {
@@ -761,6 +1038,36 @@ export class BattleScene extends Phaser.Scene {
                 yoyo: true,
                 repeat: 3
             });
+        }
+    }
+
+    updateVehicleHealth(target: Phaser.GameObjects.Container, damage: number) {
+        const currentHp = Math.max(0, target.getData('vehicleHp') - damage);
+        const maxHp = target.getData('vehicleMaxHp');
+        target.setData('vehicleHp', currentHp);
+
+        const hpBar = target.getData('vehicleHpBar') as Phaser.GameObjects.Rectangle;
+        if (hpBar) {
+            const percentage = currentHp / maxHp;
+            hpBar.width = 40 * percentage;
+            
+            // Destruction Visuals
+            if (currentHp <= 0) {
+                // Hide vehicle parts?
+                const chassis = target.getByName('vehicleChassis');
+                if (chassis) {
+                     this.tweens.add({
+                        targets: chassis,
+                        alpha: 0,
+                        scale: 1.5,
+                        duration: 300,
+                        onComplete: () => chassis.destroy()
+                    });
+                     // Create explosion visual? Handled by 'vehicle_destroy' log usually, but sync here helps
+                }
+                const turrets = target.list.filter(c => c.name && (c.name.includes('vehicle') || c.name.includes('turret')));
+                turrets.forEach(t => t.destroy()); // Cleanup parts
+            }
         }
     }
 
@@ -801,7 +1108,7 @@ export class BattleScene extends Phaser.Scene {
             maxHp: container.getData('maxHp'),
             ammo: ammo,
             currentWeaponId: container.getData('currentWeaponId') || trooperDef?.currentWeaponId,
-            jammedWeapons: container.getData('jammedWeapons') || []
+            jammedWeapons: container.getData('jammedWeapons') || trooperDef?.jammedWeapons || []
         };
     }
 }

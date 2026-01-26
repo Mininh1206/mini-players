@@ -2,6 +2,7 @@ import { skillManager, type SkillImplementation, type BattleContext } from '../s
 import type { Trooper } from '../types';
 import type { Weapon } from '../classes/Skill';
 import { SKILLS } from '../combat'; 
+import { SKILLS as ALL_SKILLS_DEFS, LightCannon, HeavyCannon, VehicleMachineGun, TwinMachineGun } from '../skills'; 
 import { getDistance } from '../utils'; 
 import { getSabotage, getCommunications } from '../stats'; 
 
@@ -807,39 +808,8 @@ const Spy: SkillImplementation = {
 
 const Pilot: SkillImplementation = {
     id: 'pilot',
-    onBattleStart: (trooper: Trooper, context: BattleContext) => {
-         // Vehicle Spawn Check
-         const vehicleSkills = trooper.skills.filter(s => ['motorcycle', 'light_tank', 'heavy_tank', 'helicopter', 'fighter_jet'].includes(s.id));
-         if (vehicleSkills.length > 0) {
-             const baseChance = 25; // Base chance? or 0? 
-             // Pilot Spec Bonus: 25% per Level? Doc says "Roll < (25 * Level)".
-             // This implies huge chance. Level 4 = 100%.
-             // If not Pilot, chance is probably very low or 0?
-             // Usually implies chance to USE owned vehicle.
-             
-             const chance = 25 * trooper.level;
-             if (Math.random() * 100 < chance) {
-                 // Pick best vehicle?
-                 const vehicleSkill = vehicleSkills[vehicleSkills.length - 1]; // Highest level?
-                 
-                 // Assign Vehicle
-                 // This requires mapping Skill ID to Vehicle Stats. 
-                 // Assuming generators.ts or similar helps, or distinct Vehicle definitions.
-                 // For now, simple mapping:
-                 const vStats = { hp: 50, maxHp: 50, armor: 0, type: vehicleSkill.id, name: vehicleSkill.name };
-                 if (vehicleSkill.id === 'heavy_tank') { vStats.hp = 100; vStats.maxHp = 100; vStats.armor = 3; }
-                 if (vehicleSkill.id === 'light_tank') { vStats.hp = 60; vStats.maxHp = 60; vStats.armor = 2; } // Doc says light tank -2 received dmg
-                 if (vehicleSkill.id === 'helicopter') { vStats.hp = 40; vStats.maxHp = 40; vStats.armor = 0; }
-                 if (vehicleSkill.id === 'motorcycle') { vStats.hp = 30; vStats.maxHp = 30; vStats.armor = 0; }
-                 
-                 trooper.vehicle = vStats as any;
-                 
-                  context.log.push({
-                    time: context.time, actorId: trooper.id, actorName: trooper.name, action: 'deploy',
-                    message: `${trooper.name} prepares their ${vehicleSkill.name}!`
-                });
-             }
-         }
+    modifyStats: (trooper: Trooper) => {
+        // Bonus handle in deployVehicle
     }
 };
 
@@ -929,7 +899,10 @@ const Saboteur: SkillImplementation = {
                          jammedList.push(weapon.id);
                          // Sync to Trooper object for UI
                          if (!victim.jammedWeapons) victim.jammedWeapons = [];
+                         if (!victim.sabotagedWeapons) victim.sabotagedWeapons = []; // Init Sabotage List
+                         
                          victim.jammedWeapons.push(weapon.id);
+                         victim.sabotagedWeapons.push(weapon.id); // Add to Sabotaged List for Icon logic
                          
                          context.log.push({
                             time: 0,
@@ -979,38 +952,67 @@ const CommsOfficer: SkillImplementation = {
     }
 };
 
+import { getVehicleConfig, type VehicleConfig } from '../vehicles';
+import type { VehicleType } from '../types';
+
+// ... (existing helper function replacement)
+
 // Vehicle Logic Helper
-const deployVehicle = (trooper: Trooper, context: BattleContext, name: string, type: any, hp: number, armor: number, weapon: Weapon | null, speedBonus: number = 0) => {
-    let chance = 0.05; // Base chance 5%
-    if (trooper.skills.some(s => s.id === 'pilot')) chance += (0.25 * trooper.level); // Pilot Bonus
+const deployVehicle = (trooper: Trooper, context: BattleContext, type: VehicleType) => {
+    const config = getVehicleConfig(type);
+    if (!config) return;
+
+    let chance = config.baseDeployChance;
+    if (trooper.skills.some(s => s.id === 'pilot')) chance += (0.25 * (trooper.level || 1)); 
     
-    // Check if duplicate vehicle? Logic usually picks one if multiple skills.
     if (trooper.vehicle) return; 
 
     if (Math.random() < chance) {
         trooper.vehicle = {
-            type,
-            name,
-            hp,
-            maxHp: hp,
-            armor
+            type: config.id,
+            name: config.name,
+            hp: config.hp,
+            maxHp: config.hp,
+            armor: config.armor,
+            weaponAmmo: {}
         };
         
-        // Apply Speed Bonus to Trooper? Or Vehicle handles it?
-        // Vehicle speed is usually fixed or modifier.
-        trooper.attributes.speed = (trooper.attributes.speed || 100) + speedBonus;
+        if (config.speedBonus) trooper.attributes.speed += config.speedBonus;
+        if (config.initiativeBonus) trooper.attributes.initiative += config.initiativeBonus;
 
-        if (weapon) {
-            trooper.skills.unshift(weapon); // Add as primary
-            trooper.currentWeaponId = weapon.id;
-        }
+        // Instantiate and add weapons
+        config.weapons.forEach(wId => {
+            let weaponInstance: Weapon | undefined;
+            switch(wId) {
+                case 'light_cannon': weaponInstance = new LightCannon(); break;
+                case 'heavy_cannon': weaponInstance = new HeavyCannon(); break;
+                case 'machine_gun_vehicle': weaponInstance = new VehicleMachineGun(); break;
+                case 'twin_machine_gun': weaponInstance = new TwinMachineGun(); break;
+            }
+            
+            if (weaponInstance) {
+                trooper.skills.unshift(weaponInstance);
+                // Set initial ammo if needed (handled in Trooper class typically? or explicit init)
+                if (weaponInstance.totalAmmo > 0) {
+                     if (!trooper.ammo) trooper.ammo = {};
+                     trooper.ammo[weaponInstance.id] = weaponInstance.capacity; 
+                     if (!trooper.reserves) trooper.reserves = {};
+                     trooper.reserves[weaponInstance.id] = weaponInstance.totalAmmo;
+                }
+                
+                // Set as primary if it's the first one or a cannon
+                if (!trooper.currentWeaponId || wId.includes('cannon')) {
+                    trooper.currentWeaponId = weaponInstance.id;
+                }
+            }
+        });
         
         context.log.push({
             time: 0,
             actorId: trooper.id,
             actorName: trooper.name,
             action: 'deploy',
-            message: `${trooper.name} rolls out in a ${name}!`
+            message: `${trooper.name} rolls out in a ${config.name}!`
         });
     }
 };
@@ -1018,32 +1020,29 @@ const deployVehicle = (trooper: Trooper, context: BattleContext, name: string, t
 const LightTank: SkillImplementation = {
     id: 'light_tank',
     onBattleStart: (trooper: Trooper, context: BattleContext) => {
-        const tankGun: Weapon = { id: 'tank_gun', name: 'Tank Gun', description: '', icon: '', damage: 20, range: 10, recovery: 20, aim: 80, crit: 10 } as any;
-        deployVehicle(trooper, context, 'Light Tank', 'light_tank', 100, 20, tankGun);
+        deployVehicle(trooper, context, 'light_tank');
     }
 };
 
 const HeavyTank: SkillImplementation = {
     id: 'heavy_tank',
     onBattleStart: (trooper: Trooper, context: BattleContext) => {
-        const heavyGun: Weapon = { id: 'heavy_tank_gun', name: 'Heavy Tank Gun', description: '', icon: '', damage: 40, range: 10, recovery: 30, aim: 80, crit: 10 } as any;
-        deployVehicle(trooper, context, 'Heavy Tank', 'heavy_tank', 200, 40, heavyGun);
+        deployVehicle(trooper, context, 'heavy_tank');
     }
 };
 
 const Helicopter: SkillImplementation = {
     id: 'helicopter',
     onBattleStart: (trooper: Trooper, context: BattleContext) => {
-        const machineGun: Weapon = { id: 'heli_machine_gun', name: 'Machine Gun', description: '', icon: '', damage: 6, range: 8, recovery: 5, aim: 70, bursts: 5 } as any;
-        deployVehicle(trooper, context, 'Helicopter', 'helicopter', 50, 10, machineGun);
+        deployVehicle(trooper, context, 'helicopter');
     }
 };
 
 const Motorcycle: SkillImplementation = {
     id: 'motorcycle',
     onBattleStart: (trooper: Trooper, context: BattleContext) => {
-        deployVehicle(trooper, context, 'Motorcycle', 'motorcycle', 50, 0, null, 50);
-        trooper.attributes.initiative += 20;
+        deployVehicle(trooper, context, 'motorcycle');
+        // Initiative bonus handled in deployVehicle via config
     }
 };
 

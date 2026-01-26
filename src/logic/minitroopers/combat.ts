@@ -180,7 +180,8 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
             reserveA,
             reserveB,
             jammedWeapons,
-            resolveWeaponShot
+            resolveWeaponShot,
+            applyDamage
         };
 
         // Tick Loop
@@ -343,8 +344,73 @@ const applyWound = (trooper: Trooper, location: BodyPart, log: BattleLogEntry[],
     }
 };
 
+export const applyDamage = (target: Trooper, damage: number, context: BattleContext, source?: Trooper) => {
+    // Vehicle Damage Absorption
+    if (target.vehicle) {
+        const vehicle = target.vehicle;
+        // Vehicle armor reduces damage?
+        const dmg = Math.max(1, damage - (vehicle.armor || 0)); // Minimum 1 damage if hit? Or 0?
+        // Wiki: Vehicles have their own armor.
+        
+        vehicle.hp -= dmg;
+        
+        context.log.push({
+            time: context.time,
+            actorId: source ? source.id : 'environment',
+            actorName: source ? source.name : 'Env',
+            targetId: target.id,
+            targetName: target.name,
+            action: 'attack', // or vehicle_hit
+            isVehicleHit: true,
+            damage: dmg,
+            message: `${target.name}'s ${vehicle.name} takes ${dmg} damage! (${vehicle.hp}/${vehicle.maxHp})`
+        });
+
+        if (vehicle.hp <= 0) {
+            // Ejection
+            target.vehicle = undefined;
+            context.log.push({
+                time: context.time,
+                actorId: target.id,
+                actorName: target.name,
+                action: 'eject',
+                message: `${target.name} is ejected from the destroyed ${vehicle.name}!`
+            });
+            // Ejection damage? 
+            // Maybe stunned?
+        }
+        return; // Trooper takes NO damage if in vehicle (unless penetrating?)
+    }
+
+    // Standard Trooper Damage
+    const armor = target.attributes.armor || 0;
+    const finalDamage = Math.max(1, damage - armor); // Minimum 1 damage logic? Or 0?
+    // Let's assume standard armor reduction.
+    
+    target.attributes.hp = Math.max(0, target.attributes.hp - finalDamage);
+    
+    // Log handled by caller usually? No, let's log "Damage Taken" here if generic?
+    // But attackers log "Attack". 
+    // If we duplicate logs, it's noisy.
+    // Usually 'resolveWeaponShot' logs the Attack/Damage.
+    // But if 'applyDamage' is called by Grenades, they log their own thing.
+    // We should just apply the value.
+    // BUT vehicle logic MUST log.
+    
+    if (target.attributes.hp === 0 && !target.isDead) {
+        target.isDead = true;
+        context.log.push({
+            time: context.time,
+            actorId: target.id,
+            actorName: target.name,
+            action: 'wait',
+            message: `${target.name} dies!`
+        });
+    }
+};
+
 export function resolveWeaponShot(actor: Trooper, target: Trooper, weapon: Weapon | Grenade, context: BattleContext) {
-    const { log, allTroopers, time } = context;
+    const { log, allTroopers, time, applyDamage } = context;
 
     const vX = (target.position?.x || 0) - (actor.position?.x || 0);
     const vY = (target.position?.y || 0) - (actor.position?.y || 0);
@@ -436,39 +502,16 @@ export function resolveWeaponShot(actor: Trooper, target: Trooper, weapon: Weapo
             let damage = Math.floor(minDamage + Math.random() * (maxDamage - minDamage + 1));
             damage += (actor.attributes.damage || 0);
             if (isCrit) damage *= 1.5;
-            // Vehicle Check
-            if (actualTarget.vehicle && actualTarget.vehicle.hp > 0) {
-                 // Double damage to vehicles with explosives? Doc says x2 vs Vehicles.
-                 if ((weapon as any).id === 'bazooka' || (weapon as any).id.includes('rocket')) {
-                     damage *= 2;
-                 }
-                 
-                 const armor = actualTarget.vehicle.armor;
-                 damage = Math.max(1, Math.floor(damage - armor));
-                 actualTarget.vehicle.hp = Math.max(0, actualTarget.vehicle.hp - damage);
-                 
-                  log.push({
-                    time, actorId: actor.id, actorName: actor.name, targetId: actualTarget.id, targetName: actualTarget.name,
-                    action: 'attack', damage, isCrit, message: `${actor.name} hits ${actualTarget.name}'s ${actualTarget.vehicle.name} for ${damage}`,
-                    data: { weaponId: weapon.id }
-                });
+            
+            // Log attack
+            log.push({
+                time, actorId: actor.id, actorName: actor.name, targetId: actualTarget.id, targetName: actualTarget.name,
+                action: 'attack', damage, isCrit, message: `${actor.name} hits ${actualTarget.name} with explosion for ${damage}`,
+                data: { weaponId: weapon.id }
+            });
 
-                 if (actualTarget.vehicle.hp === 0) {
-                     log.push({ time, actorId: actor.id, actorName: actor.name, action: 'vehicle_destroy', message: `${actualTarget.name}'s vehicle destroyed!` });
-                     // Eject / Damage Pilot?
-                     // actualTarget.attributes.hp -= 5; // Crash damage
-                 }
-            } else {
-                 damage = Math.max(1, Math.floor(damage - (actualTarget.attributes.armor || 0)));
-                 actualTarget.attributes.hp = Math.max(0, actualTarget.attributes.hp - damage);
-                 if (actualTarget.attributes.hp === 0) actualTarget.isDead = true;
-                 
-                  log.push({
-                    time, actorId: actor.id, actorName: actor.name, targetId: actualTarget.id, targetName: actualTarget.name,
-                    action: 'attack', damage, isCrit, message: `${actor.name} hits ${actualTarget.name} with explosion for ${damage}`,
-                    data: { weaponId: weapon.id }
-                });
-            }
+            // Apply Damage (Handles Vehicles & Armor)
+            applyDamage!(actualTarget, damage, context, actor);
 
         } else {
             // Miss Logic
@@ -496,56 +539,33 @@ export function resolveWeaponShot(actor: Trooper, target: Trooper, weapon: Weapo
                 const falloff = 0.5 + 0.5 * (1 - (distToImpact / blastRadius));
                 splashDamage = Math.floor(splashDamage * falloff);
                 
-                // Vehicle Check for Splash
-                 if (unit.vehicle && unit.vehicle.hp > 0) {
-                     splashDamage = Math.max(0, splashDamage - unit.vehicle.armor);
-                     if (splashDamage > 0) {
-                         unit.vehicle.hp = Math.max(0, unit.vehicle.hp - splashDamage);
-                          log.push({
-                            time, actorId: actor.id, actorName: actor.name, targetId: unit.id, targetName: unit.name,
-                            action: 'attack', damage: splashDamage, message: `${unit.name}'s vehicle caught in blast (${splashDamage} dmg).`
-                        });
-                     }
-                 } else {
-                    splashDamage = Math.max(0, splashDamage - (unit.attributes.armor || 0));
-                    
-                    // Healing Grenade Logic
+                if (splashDamage !== 0) {
+                     // Healing Grenade Check (Custom Logic)
                     if (weapon instanceof Grenade && weapon.effect === 'healing') {
-                        splashDamage = -5; // Fixed heal or based on damage? Grenade has damage=0.
-                        // Let's use negative 'damage' prop if set? 
-                        // User table says Healing Grenade Dam "Heal".
-                        // I set damage=0.
-                        // I'll set splashDamage to -10 for now.
-                        splashDamage = -10;
+                        // Healing handled outside applyDamage usually? Or negative damage?
+                        // If applyDamage doesn't handle neg damage as heal, we do it here.
+                         unit.attributes.hp = Math.min(unit.attributes.maxHp, unit.attributes.hp + 5); 
+                         // Logging for heal needed?
+                    } else {
+                        applyDamage!(unit, splashDamage, context, actor);
                     }
+                }
+            } // End dist check
 
-                    if (splashDamage !== 0) {
-                        unit.attributes.hp = Math.min(unit.attributes.maxHp, Math.max(0, unit.attributes.hp - splashDamage));
-                        if (unit.attributes.hp === 0) unit.isDead = true;
-                        
-                        const msg = splashDamage > 0 ? 
-                            `${unit.name} caught in blast (${splashDamage} dmg).` : 
-                            `${unit.name} is healed by blast (${Math.abs(splashDamage)} hp).`;
-                            
-                        log.push({
-                            time, actorId: actor.id, actorName: actor.name, targetId: unit.id, targetName: unit.name,
-                            action: splashDamage > 0 ? 'attack' : 'heal', damage: Math.abs(splashDamage), message: msg
-                        });
-                    }
-                 }
-                 
-                  if (weaponStun > 0) {
-                    // Knockback
+             if (weaponStun > 0) {
+                 // Knockback logic
+                 const distToImpact = Math.sqrt(Math.pow((unit.position!.x) - impactX, 2) + Math.pow((unit.position!.y) - impactY, 2));
+                 if (distToImpact <= blastRadius) {
                     const pushFactor = (1 - (distToImpact/blastRadius));
                     const force = weaponStun * pushFactor;
                     const angle = Math.atan2(unit.position!.y - impactY, unit.position!.x - impactX);
                     unit.position!.x += Math.cos(angle) * force;
                     unit.position!.y += Math.sin(angle) * force;
-                     // Stun Logic? (Skip turn?)
-                }
-
-                // Grenade Effects
-                if (weapon instanceof Grenade && weapon.effect) {
+                 }
+            }
+ 
+            // Grenade Effects
+            if (weapon instanceof Grenade && weapon.effect) {
                      const g = weapon as Grenade;
                      if (!unit.status) unit.status = {};
                      
@@ -563,8 +583,7 @@ export function resolveWeaponShot(actor: Trooper, target: Trooper, weapon: Weapo
                          // Just visual for now
                      }
                 }
-            }
-        });
+            }); // End forEach
 
     } else {
         // --- STANDARD SHOT ---
@@ -605,65 +624,37 @@ export function resolveWeaponShot(actor: Trooper, target: Trooper, weapon: Weapo
                 if (weapon.id === 'sparrowhawk') critMult = 50.0;
             }
             
-            // Vehicle Interception
-            if (actualTarget.vehicle && actualTarget.vehicle.hp > 0) {
-                 // Vehicle takes the hit
-                 // Vehicles mostly ignore location, just Armor
-                 // Unless 'head' hit on motorcycle? Assume Generic Vehicle Hit for simplicty
-                 
-                 let vDamage = Math.floor(damage * critMult); 
-                 vDamage = Math.max(1, vDamage - actualTarget.vehicle.armor);
-                 
-                 actualTarget.vehicle.hp = Math.max(0, actualTarget.vehicle.hp - vDamage);
-                  log.push({
-                    time, actorId: actor.id, actorName: actor.name, targetId: actualTarget.id, targetName: actualTarget.name,
-                    action: 'attack', damage: vDamage, isCrit, message: `${actor.name} hits ${actualTarget.name}'s vehicle for ${vDamage}`,
-                    data: { weaponId: weapon.id }
-                });
+            const finalDamage = Math.floor(damage * critMult * locMult);
+
+            // Log Attack
+             log.push({
+                time, actorId: actor.id, actorName: actor.name, targetId: actualTarget.id, targetName: actualTarget.name,
+                action: 'attack', damage: finalDamage, isCrit, message: `${actor.name} hits ${actualTarget.name} for ${finalDamage}`,
+                data: { weaponId: weapon.id }
+            });
+
+            // Apply Damage
+            applyDamage!(actualTarget, finalDamage, context, actor);
+            
+            // Apply Wound/Debuff (Infantry Only?)
+            if (!actualTarget.vehicle) {
+                 applyWound(actualTarget, hitLocation, log, time);
+            }
+            
+            // Stun/Knockback (Shotguns & Grenades & Weapons)
+            if (weaponStun > 0) {
+                 // Knockback (Directional from actor)
+                const angle = Math.atan2(actualTarget.position!.y - actor.position!.y, actualTarget.position!.x - actor.position!.x);
+                actualTarget.position!.x += Math.cos(angle) * weaponStun;
+                actualTarget.position!.y += Math.sin(angle) * weaponStun;
                 
-                if (actualTarget.vehicle.hp === 0) {
-                    log.push({ time, actorId: actor.id, actorName: actor.name, action: 'vehicle_destroy', message: `${actualTarget.name}'s vehicle destroyed!` });
-                    // Pilot Damage (Fall Guy Check needed)
-                    if (!actualTarget.skills.some(s => s.id === 'fall_guy')) {
-                        actualTarget.attributes.hp = Math.max(0, actualTarget.attributes.hp - 5); // 5 dmg on crash
-                        if (actualTarget.attributes.hp === 0) actualTarget.isDead = true;
-                        log.push({ time, actorId: actualTarget.id, actorName: actualTarget.name, action: 'knockback', message: `${actualTarget.name} takes crash damage!` });
-                    }
-                }
-                
-            } else {
-                // Infantry Hit
-                // Armor Calculation
-                let damageVsArmor = damage;
-                // Check Ignore Armor (Thompson, Desert Eagle)
-                const ignoresArmor = weapon.id === 'thompson' || weapon.id === 'desert_eagle';
-                
-                if (weapon.id !== 'thompson' && !ignoresArmor) {
-                    damageVsArmor = Math.max(1, damage - (actualTarget.attributes.armor || 0));
-                }
-                
-                const finalDamage = Math.floor(damageVsArmor * critMult * locMult);
-                
-                actualTarget.attributes.hp = Math.max(0, actualTarget.attributes.hp - finalDamage);
-                if (actualTarget.attributes.hp === 0) actualTarget.isDead = true;
-                
-                // Apply Wound/Debuff
-                applyWound(actualTarget, hitLocation, log, time);
-                
-                // Stun/Knockback (Shotguns & Grenades & Weapons)
-                if (weaponStun > 0) {
-                     // Knockback (Directional from actor)
-                    const angle = Math.atan2(actualTarget.position!.y - actor.position!.y, actualTarget.position!.x - actor.position!.x);
-                    actualTarget.position!.x += Math.cos(angle) * weaponStun;
-                    actualTarget.position!.y += Math.sin(angle) * weaponStun;
-                    
-                    // Add Recovery
-                    actualTarget.recoveryTime = (actualTarget.recoveryTime || 0) + 100;
-                    log.push({ time, actorId: actor.id, actorName: actor.name, action: 'knockback', message: `${actualTarget.name} is knocked down!` });
-                }
-                
-                // Grenade Effects (Single Target)
-                if (weapon instanceof Grenade && weapon.effect) {
+                // Add Recovery
+                actualTarget.recoveryTime = (actualTarget.recoveryTime || 0) + 100;
+                log.push({ time, actorId: actor.id, actorName: actor.name, action: 'knockback', message: `${actualTarget.name} is knocked down!` });
+            }
+            
+            // Grenade Effects (Single Target)
+            if (weapon instanceof Grenade && weapon.effect) {
                      const g = weapon as Grenade;
                      const unit = actualTarget; // Alias for consistency
                      if (!unit.status) unit.status = {};
@@ -749,10 +740,8 @@ export function resolveWeaponShot(actor: Trooper, target: Trooper, weapon: Weapo
                         
                         remainingPen--;
                         dmgMult *= 0.5;
-                    }
                 }
             }
-
         } else {
              // Miss
             const missX = (target.position?.x || 0) + dirX * 200;

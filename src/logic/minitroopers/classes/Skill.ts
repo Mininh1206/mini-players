@@ -100,8 +100,29 @@ export class Launcher extends Weapon {
 }
 
 export class Melee extends Weapon {
-    constructor(id: string, name: string, description: string, icon: string, damage: number, bursts: number, range: number, crit: number, aim: number, recovery: number, cap: number, area: number, stun: number, rangeMin: number, maxDamage: number, totalAmmo: number) {
-        super(id, name, description, icon, damage, bursts, range, crit, aim, recovery, cap, area, stun, rangeMin, 0, maxDamage, totalAmmo, false, 2.0);
+    public readonly isUnlimited: boolean = true;
+    
+    constructor(
+        id: string, 
+        name: string, 
+        description: string, 
+        icon: string, 
+        damage: number, 
+        bursts: number = 1, 
+        range: number = 1, 
+        crit: number = 5, 
+        aim: number = 100, 
+        recovery: number = 30,
+        area: number = 0, 
+        stun: number = 0, 
+        maxDamage: number = 0
+    ) {
+        // Melee weapons have infinite capacity (no ammo concept)
+        super(id, name, description, icon, damage, bursts, range, crit, aim, recovery, 
+              Infinity, // capacity - unlimited
+              area, stun, 0, 0, maxDamage, 
+              Infinity, // totalAmmo - unlimited
+              false, 2.0);
     }
 }
 

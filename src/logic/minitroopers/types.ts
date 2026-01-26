@@ -37,13 +37,19 @@ export interface Wounds {
     rightLeg: boolean;
 }
 
+export type VehicleType = 'motorcycle' | 'light_tank' | 'heavy_tank' | 'helicopter' | 'fighter_jet';
+
 export interface TrooperVehicle {
-    type: 'motorcycle' | 'light_tank' | 'heavy_tank' | 'helicopter' | 'fighter_jet';
+    type: VehicleType;
     name: string;
     hp: number;
     maxHp: number;
     armor: number;
+    // Vehicle weapons with their ammo
+    weaponAmmo?: Record<string, number>;
 }
+
+export type Trooper = TrooperData;
 
 export interface TrooperData {
     id: string;
@@ -63,7 +69,8 @@ export interface TrooperData {
     recoveryTime?: number; // Ticks to wait before acting again
     cooldown?: number; // Deprecated, kept for compatibility during refactor
     disarmed?: string[]; // IDs of disabled weapons
-    jammedWeapons?: string[]; // IDs of sabotaged weapons
+    sabotagedWeapons?: string[]; // IDs of sabotaged weapons
+    jammedWeapons?: string[]; // IDs of jammed weapons
     tactics?: {
         priority: 'closest' | 'weakest' | 'strongest' | 'random';
         targetPart: 'any' | 'head' | 'heart' | 'arm' | 'leg';
@@ -101,6 +108,7 @@ export interface BattleLogEntry {
     isKillshot?: boolean;
     isGlancing?: boolean;
     message: string;
+    isVehicleHit?: boolean;
     data?: any; // Extensible metadata (e.g. weaponId)
 }
 

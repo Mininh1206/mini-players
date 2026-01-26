@@ -107,5 +107,55 @@ describe('Combat Logic', () => {
         );
         expect(attackLogsOrSwitch.length).toBeGreaterThan(0);
     });
+
+    it('Melee attacks should NEVER target allies (friendly fire prevention)', () => {
+        // Create two soldiers on the same team positioned next to each other
+        const soldier1Data: TrooperData = {
+            id: 'soldier-1', name: 'Soldier 1', team: 'A', level: 1, class: 'Soldier',
+            skills: [],
+            attributes: { hp: 20, maxHp: 20, speed: 10, initiative: 100, aim: 100, dodge: 0, armor: 0, critChance: 5, damage: 0, aggro: 0, range: 0, recoveryMod: 0, reloadBonus: 0, deploymentLimitBonus: 0 },
+            position: { x: 100, y: 100 },
+            isDead: false,
+            disarmed: []
+        };
+        
+        const soldier2Data: TrooperData = {
+            id: 'soldier-2', name: 'Soldier 2 (Ally)', team: 'A', level: 1, class: 'Soldier',
+            skills: [],
+            attributes: { hp: 20, maxHp: 20, speed: 10, initiative: 50, aim: 100, dodge: 0, armor: 0, critChance: 5, damage: 0, aggro: 0, range: 0, recoveryMod: 0, reloadBonus: 0, deploymentLimitBonus: 0 },
+            position: { x: 120, y: 100 }, // Very close to soldier 1 (within melee range)
+            isDead: false,
+            disarmed: []
+        };
+
+        const enemyData: TrooperData = {
+            id: 'enemy-1', name: 'Enemy', team: 'B', level: 1, class: 'Soldier',
+            skills: [],
+            attributes: { hp: 20, maxHp: 20, speed: 10, initiative: 30, aim: 100, dodge: 0, armor: 0, critChance: 5, damage: 0, aggro: 0, range: 0, recoveryMod: 0, reloadBonus: 0, deploymentLimitBonus: 0 },
+            position: { x: 900, y: 100 }, // Far away
+            isDead: false,
+            disarmed: []
+        };
+
+        const soldier1 = new Soldier(soldier1Data);
+        const soldier2 = new Soldier(soldier2Data);
+        const enemy = new Soldier(enemyData);
+
+        // Inject fists only (force melee)
+        soldier1.recalculateStats();
+        soldier2.recalculateStats();
+        enemy.recalculateStats();
+
+        const result = simulateBattle([soldier1, soldier2], [enemy]);
+        
+        // Check that no soldier attacked another soldier
+        const friendlyFireAttacks = result.log.filter(l => 
+            l.action === 'attack' && 
+            l.actorId.startsWith('soldier-') && 
+            l.targetId?.startsWith('soldier-')
+        );
+        
+        expect(friendlyFireAttacks.length).toBe(0);
+    });
 });
 
