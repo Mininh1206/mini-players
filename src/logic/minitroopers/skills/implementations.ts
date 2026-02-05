@@ -16,6 +16,97 @@ const Tank: SkillImplementation = {
     }
 };
 
+const Munitions: SkillImplementation = {
+    id: 'munitions',
+    modifyStats: (trooper: Trooper) => {
+        // Double ammo reserves for all weapons
+        trooper.skills.forEach(s => {
+             // We can't easily modify 'capacity' here as it's static definition.
+             // But we can modify 'reserves' if we initialized them.
+             // Let's assume reserves are init in Trooper.ts or here.
+             // We'll set a flag or modifier.
+             // Actually, simplest way is to boost them here if they exist.
+        });
+    },
+    onBattleStart: (trooper: Trooper, context: BattleContext) => {
+         // Apply double ammo logic here to ensure initialized ammo is doubled
+         // And set initial resupply limit
+         const level = trooper.level || 1;
+         const resupplyLimit = Math.min(5, Math.floor(level)); // Max 5? Wiki says "level 6 -> 5 resupplies".
+         trooper.status = { ...trooper.status, resupply_charges: resupplyLimit };
+         
+         // Increase Reserves
+         trooper.skills.forEach(s => {
+             // Check if it's a weapon
+             const def = ALL_SKILLS_DEFS.find((d: any) => d.id === s.id);
+             if (def && (def as any).capacity) { // Is weapon
+                 const current = trooper.ammo?.[s.id] || 0;
+                 const capacity = (def as any).capacity;
+                 // Add +100% capacity to reserves? Or just fill reserves?
+                 // Wiki says "cartridge counter".
+                 // Let's give huge reserves.
+                 trooper.reserves = trooper.reserves || {};
+                 trooper.reserves[s.id] = (trooper.reserves[s.id] || 0) + capacity * 2;
+             }
+         });
+         
+         context.log.push({
+            time: context.time, actorId: trooper.id, actorName: trooper.name, action: 'wait',
+            message: `${trooper.name} (Munitions) brings extra ammo!`
+         });
+    },
+    onTurnStart: (trooper: Trooper, context: BattleContext): boolean => {
+        const charges = trooper.status?.resupply_charges || 0;
+        if (charges <= 0) return false;
+
+        const { deployedA, deployedB, log } = context;
+        const allies = trooper.team === 'A' ? deployedA : deployedB;
+        
+        // Find ally with Low Ammo (Empty clip OR Empty reserves)
+        // Priority: Empty Clip & Reserves > Empty Clip > Low Reserves
+        // Simple Logic: Find ally with < 50% total potential ammo? 
+        // Or ally who needs reload but has no reserves? this is critical.
+        
+        const needyAlly = allies.find(a => !a.isDead && a.skills.some(s => {
+             // Check if main weapon has no ammo
+             if (a.currentWeaponId === s.id) {
+                 const ammo = a.ammo?.[s.id] || 0;
+                 const reserves = a.reserves?.[s.id] || 0;
+                 return ammo === 0 && reserves === 0;
+             }
+             return false;
+        }));
+
+        if (needyAlly) {
+             // Perform Resupply
+             const weaponId = needyAlly.currentWeaponId!;
+             const def = ALL_SKILLS_DEFS.find((d: any) => d.id === weaponId);
+             const capacity = (def as any).capacity || 1;
+             
+             // Refill
+             needyAlly.ammo = needyAlly.ammo || {};
+             needyAlly.reserves = needyAlly.reserves || {};
+             
+             needyAlly.ammo[weaponId] = capacity;
+             needyAlly.reserves[weaponId] = (needyAlly.reserves[weaponId] || 0) + capacity * 2; // Give 2 clips
+             
+             trooper.status!.resupply_charges = charges - 1;
+             
+             log.push({
+                 time: context.time, actorId: trooper.id, actorName: trooper.name, 
+                 targetId: needyAlly.id, targetName: needyAlly.name,
+                 action: 'use_equipment', // Reuse generic interaction
+                 message: `${trooper.name} resupplies ${needyAlly.name} with ammo!`
+             });
+             
+             trooper.recoveryTime = 50;
+             return true;
+        }
+        
+        return false;
+    }
+};
+
 const SniperTraining: SkillImplementation = {
     id: 'sniper',
     modifyStats: (trooper: Trooper) => {
@@ -542,7 +633,7 @@ const Bait: SkillImplementation = {
 
 // --- Phase 3: Equipment & Shells ---
 
-const GrenadeLogic = (id: string, name: string, effect: (enemies: Trooper[], center: {x: number, y: number}) => string): SkillImplementation => ({
+const GrenadeLogic = (id: string, name: string, effect: (enemies: Trooper[], center: {x: number, y: number}) => { message: string, hits: { id: string, damage: number }[] }): SkillImplementation => ({
     id,
     onTurnAction: (trooper: Trooper, context: BattleContext): boolean => {
         // Find the skill instance to check limit
@@ -556,18 +647,17 @@ const GrenadeLogic = (id: string, name: string, effect: (enemies: Trooper[], cen
         if (livingEnemies.length === 0) return false;
 
         // Target logic: Cluster or Random?
-        // Let's pick a random target for now, or the one with most neighbors.
         const target = livingEnemies[Math.floor(Math.random() * livingEnemies.length)];
         const dist = getDistance(trooper.position, target.position);
         
         if (dist <= 400) { // Throw range
-            if (Math.random() < 0.3) { // 30% chance to use if available
+            if (Math.random() < 0.3) {
                 (skillInstance as any).limit--;
                 
                 const blastRadius = 100;
                 const affected = livingEnemies.filter(e => getDistance(e.position, target.position) <= blastRadius);
                 
-                const effectMsg = effect(affected, target.position || {x: 0, y: 0});
+                const result = effect(affected, target.position || {x: 0, y: 0});
                 
                 log.push({
                     time: context.time, 
@@ -576,8 +666,9 @@ const GrenadeLogic = (id: string, name: string, effect: (enemies: Trooper[], cen
                     targetId: target.id, 
                     targetName: target.name,
                     action: 'use_equipment', 
-                    message: `${trooper.name} throws ${name}! ${effectMsg}`,
-                    targetPosition: target.position
+                    message: `${trooper.name} throws ${name}! ${result.message}`,
+                    targetPosition: target.position,
+                    data: { hits: result.hits }
                 });
                 
                 trooper.recoveryTime = 200;
@@ -590,13 +681,15 @@ const GrenadeLogic = (id: string, name: string, effect: (enemies: Trooper[], cen
 
 const FragGrenade = GrenadeLogic('frag_grenade', 'Frag Grenade', (enemies) => {
     let hits = 0;
+    const hitData: { id: string, damage: number }[] = [];
     enemies.forEach(e => {
         const dmg = 20;
         e.attributes.hp = Math.max(0, e.attributes.hp - dmg);
         if (e.attributes.hp === 0) e.isDead = true;
         hits++;
+        hitData.push({ id: e.id, damage: dmg });
     });
-    return `Hit ${hits} enemies for 20 dmg.`;
+    return { message: `Hit ${hits} enemies for 20 dmg.`, hits: hitData };
 });
 
 const Flashbang = GrenadeLogic('flashbang', 'Flashbang', (enemies) => {
@@ -604,7 +697,7 @@ const Flashbang = GrenadeLogic('flashbang', 'Flashbang', (enemies) => {
         e.attributes.initiative = Math.max(0, e.attributes.initiative - 10);
         e.attributes.aim = Math.max(0, e.attributes.aim - 20);
     });
-    return `Blinded ${enemies.length} enemies.`;
+    return { message: `Blinded ${enemies.length} enemies.`, hits: [] };
 });
 
 const GasGrenade = GrenadeLogic('gas_grenade', 'Gas Grenade', (enemies) => {
@@ -615,14 +708,14 @@ const GasGrenade = GrenadeLogic('gas_grenade', 'Gas Grenade', (enemies) => {
         e.attributes.initiative -= 5;
         if (e.attributes.hp === 0) e.isDead = true;
     });
-    return `Poisoned ${enemies.length} enemies.`;
+    return { message: `Poisoned ${enemies.length} enemies.`, hits: [] };
 });
 
 const GlueGrenade = GrenadeLogic('glue_grenade', 'Glue Grenade', (enemies) => {
     enemies.forEach(e => {
         e.attributes.speed = Math.max(0, e.attributes.speed - 20);
     });
-    return `Slowed ${enemies.length} enemies.`;
+    return { message: `Slowed ${enemies.length} enemies.`, hits: [] };
 });
 
 const ShockGrenade = GrenadeLogic('shock_grenade', 'Shock Grenade', (enemies) => {
@@ -631,7 +724,7 @@ const ShockGrenade = GrenadeLogic('shock_grenade', 'Shock Grenade', (enemies) =>
         e.disarmed = e.disarmed || []; // Stun = disarm? Or just init?
         // Let's say stun = massive init penalty
     });
-    return `Stunned ${enemies.length} enemies.`;
+    return { message: `Shocked ${enemies.length} enemies.`, hits: [] };
 });
 
 const HealingGrenade: SkillImplementation = {
@@ -796,12 +889,14 @@ const Spy: SkillImplementation = {
         const enemyXStart = trooper.team === 'A' ? 800 : 0;
         const enemyXEnd = trooper.team === 'A' ? 1000 : 200;
         
+        // Update position logically (though combat.ts might have done it, this ensures consistency)
         trooper.position!.x = enemyXStart + Math.random() * (enemyXEnd - enemyXStart);
         trooper.position!.y = 50 + Math.random() * 300;
         
         context.log.push({
             time: context.time, actorId: trooper.id, actorName: trooper.name, action: 'deploy',
-            message: `${trooper.name} infiltrates behind enemy lines! (Spy)`
+            message: `${trooper.name} infiltrates behind enemy lines! (Spy)`,
+            targetPosition: { x: trooper.position?.x || 0, y: trooper.position?.y || 0 }
         });
     }
 };
@@ -881,12 +976,18 @@ const Saboteur: SkillImplementation = {
                  const victimIndex = Math.floor(Math.random() * enemies.length);
                  const victim = enemies[victimIndex];
                  
-                 // Get valid weapons to jam (Ranged only - melee can't be sabotaged)
-                  const weapons = victim.skills.filter(s => 
-                      (s as any).damage !== undefined && 
-                      (s as any).range !== undefined && 
-                      (s as any).range > 1 // Exclude melee (range 1)
-                  );
+                 // Get valid weapons to jam (Firearms only - NOT melee, NOT grenades, NOT equipment)
+                 // Skill must be a Weapon class instance (not Grenade/Equipment) and not Melee (range > 1)
+                  const weapons = victim.skills.filter(s => {
+                      const def = ALL_SKILLS_DEFS.find((d: { id: string }) => d.id === s.id);
+                      if (!def) return false;
+                      // Check if it's a Weapon class (has bursts, capacity, recovery like firearms)
+                      // AND has range > 1 (excludes melee) AND has totalAmmo (firearms have ammo)
+                      return (def as any).bursts !== undefined && 
+                             (def as any).range > 1 && 
+                             (def as any).totalAmmo !== undefined &&
+                             (def as any).totalAmmo !== Infinity; // Exclude melee which has Infinity
+                  });
                  if (weapons.length > 0) {
                      // Pick a weapon that isn't already jammed
                      if (!context.jammedWeapons.has(victim.id)) context.jammedWeapons.set(victim.id, []);
@@ -1055,6 +1156,7 @@ export const registerCoreSkills = () => {
     skillManager.register(Sprinter);
     skillManager.register(Commando);
     skillManager.register(Doctor);
+    skillManager.register(Munitions); // Added
     skillManager.register(TriggerHappy);
     
     // Phase 1

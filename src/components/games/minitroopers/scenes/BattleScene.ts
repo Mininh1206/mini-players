@@ -1,54 +1,55 @@
 import Phaser from 'phaser';
-import type { BattleResult, BattleLogEntry } from '@/logic/minitroopers/types';
+import type { BattleResult, BattleLogEntry, TrooperData } from '@/logic/minitroopers/types';
 import { Trooper } from '@/logic/minitroopers/classes/Trooper';
-import { getDeploymentCost } from '@/logic/minitroopers/deployment';
+import { BattleMap } from '@/logic/minitroopers/systems/BattleMap';
+import { EffectFactory } from '@/logic/minitroopers/systems/VisualEffects';
 
 export class BattleScene extends Phaser.Scene {
     private battleResult: BattleResult;
     private troopers: Map<string, Phaser.GameObjects.Container>;
     private currentTurnIndex: number = 0;
     private battleText: Phaser.GameObjects.Text | null = null;
-    private isPlayingTurn: boolean = false;
+    private battleTimerText: Phaser.GameObjects.Text | null = null;
     private isPaused: boolean = false;
+    private isBattleEnded: boolean = false;
+    private pauseOverlay: Phaser.GameObjects.Rectangle | null = null;
+    
     public onTrooperClick?: (trooperId: string) => void;
     public onResume?: () => void;
-    private borderTop: Phaser.GameObjects.Rectangle | null = null;
-    private borderBottom: Phaser.GameObjects.Rectangle | null = null;
-    private colorMatrix: Phaser.FX.ColorMatrix | null = null;
-
-    // All troopers available (for looking up data when spawning)
-    private allTroopersMap: Map<string, Trooper> = new Map();
-    private battleTime: number = 0;
-    private processedLogs: Set<number> = new Set(); // Indicies of processed logs
-    private translations: Record<string, string> = {};
-    private bgImage: Phaser.GameObjects.Image | null = null;
+    public onTimeUpdate?: (time: number) => void;
     
-    // UI - Reserves
-    private timeText: Phaser.GameObjects.Text | null = null;
+    // Core Logic
+    private battleTime: number = 0;
+    private speedMultiplier: number = 1;
+    
+    // Event Queues per Actor
+    private actionQueues: Map<string, BattleLogEntry[]> = new Map();
+    private isActorBusy: Map<string, boolean> = new Map();
+
+    // Data maps
+    private allTroopersMap: Map<string, Trooper> = new Map();
+    
+    // Systems
+    private mapSystem: BattleMap;
+    private translations: Record<string, string> = {};
+
+    // HUD
+    private teamAStatsText: Phaser.GameObjects.Text | null = null;
+    private teamBStatsText: Phaser.GameObjects.Text | null = null;
     private totalCountA: number = 0;
     private totalCountB: number = 0;
     private deployedCountA: number = 0;
     private deployedCountB: number = 0;
-    private pendingJams: Map<string, string[]> = new Map();
-
-    // Bottom HUD - Team Stats
-    private hudContainer: Phaser.GameObjects.Container | null = null;
-    private teamAStatsText: Phaser.GameObjects.Text | null = null;
-    private teamBStatsText: Phaser.GameObjects.Text | null = null;
-    private deploymentA: number = 0;
-    private deploymentB: number = 0;
     private communicationsA: number = 0;
     private communicationsB: number = 0;
     private sabotageA: number = 0;
     private sabotageB: number = 0;
-    
-    // Top Right - Time & Speed
-    // private timeText: Phaser.GameObjects.Text | null = null; // Moved declaration
 
     constructor() {
         super('BattleScene');
         this.troopers = new Map();
         this.battleResult = { winner: '', log: [] } as any; 
+        this.mapSystem = new BattleMap(this);
     }
 
     init(data: { result: BattleResult, teamA: Trooper[], teamB: Trooper[], translations?: Record<string, string> }) {
@@ -63,24 +64,21 @@ export class BattleScene extends Phaser.Scene {
 
         this.currentTurnIndex = 0;
         this.battleTime = 0;
-        this.processedLogs.clear();
-        this.isPlayingTurn = false;
+        this.isPaused = false;
+        this.isBattleEnded = false;
+        this.actionQueues.clear();
+        this.isActorBusy.clear();
 
-        // Team Counts
         this.totalCountA = data.teamA?.length || 0;
         this.totalCountB = data.teamB?.length || 0;
         this.deployedCountA = 0;
         this.deployedCountB = 0;
-        this.pendingJams.clear();
 
-        // Calculate Team Stats for HUD
-        // Note: These calculations duplicate logic from the battle simulator setup.
-        // Ideally, these values should be passed in `data`, but we calculate them here for display.
+        // Calculate Stats
         const getComms = (team: Trooper[]) => team.reduce((acc, t) => {
             const comms = t.skills.find(s => s.id === 'comms_officer');
-            return acc + (comms ? 5 + (t.level || 1) : 0); // +5 base, +1 per level
+            return acc + (comms ? 5 + (t.level || 1) : 0);
         }, 0);
-
         const getSabotage = (team: Trooper[]) => team.reduce((acc, t) => {
             const sab = t.skills.find(s => s.id === 'saboteur');
             return acc + (sab ? 5 + (t.level || 1) : 0);
@@ -90,146 +88,76 @@ export class BattleScene extends Phaser.Scene {
         this.communicationsB = getComms(data.teamB || []);
         this.sabotageA = getSabotage(data.teamA || []);
         this.sabotageB = getSabotage(data.teamB || []);
-        
-        // Deployment Calculation (simplified for display)
-        // In real logic, this depends on available slots vs cost.
-        // Here we just track deployed count vs total count in the top-left/right display,
-        // and points used in the HUD.
-        this.deploymentA = 0; // Points used
-        this.deploymentB = 0;
     }
 
-    private speedMultiplier: number = 1;
+    preload() {
+        this.mapSystem.preload();
+    }
 
     create() {
-        // Calculate center offsets
-        // Logic area is 800x600.
-        // We want (400, 300) to be at the center of the viewport (scale.width/2, scale.height/2).
-        // Actually, easiest way is to use Camera Center.
+        // MAP
+        this.mapSystem.create();
+        
+        // Camera
         this.cameras.main.centerOn(400, 300);
 
-        // Background for input - Make it huge to cover resizing
+        // Input Background (for pause)
         const bg = this.add.rectangle(400, 300, 4000, 4000, 0x000000, 0).setInteractive();
         bg.on('pointerdown', () => {
-             if (this.isPaused) {
-                 this.resume();
-             } else {
-                 this.pause();
-             }
+             if (this.isPaused) this.resume();
+             else this.pause();
         });
 
-        // Visual Background (Sky) - make it dynamic
-        this.bgImage = this.add.image(400, 300, 'sky').setAlpha(0.5).setScrollFactor(0);
-        
-        // Battle Text - Anchor to Top Center of Viewport
-        this.battleText = this.add.text(400, -250, this.translations['battle_start'] || 'Battle Start!', { // Relative to center
-            fontSize: '24px',
-            color: '#ffffff',
-            stroke: '#000000',
-            strokeThickness: 4,
-            align: 'center'
-        }).setOrigin(0.5).setScrollFactor(0); // ScrollFactor 0 means it sticks to camera? 
-        // No, centerOn changes world view. ScrollFactor 0 locks to camera, 
-        // coordinates become 0,0 at top-left of screen.
-        // So allow scroll, just position relative to 400,300.
-        
-        // Actually, sticking to camera is better for UI.
-        // Actually, sticking to camera is better for UI.
-        this.battleText.setScrollFactor(0);
+        // Pause Overlay (visual only, doesn't block input - troopers stay clickable)
+        this.pauseOverlay = this.add.rectangle(400, 300, 4000, 4000, 0x000000, 0.4)
+            .setDepth(999) // Below troopers so they can be clicked
+            .setScrollFactor(0)
+            .setVisible(false);
 
-        // Reserve Counters (Redundant with HUD - Removed to fix overlap)
-        // const style = ...
-        // this.reserveTextA = ...
-        // this.reserveTextB = ...
+        // Battle Timer Text
+        this.battleTimerText = this.add.text(400, 50, '00:00', {
+            fontSize: '24px', color: '#fff', stroke: '#000', strokeThickness: 4, fontStyle: 'bold'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(1001);
 
-        // Listen for resize
-        this.scale.on('resize', this.resize, this);
+        // Battle Text
+        this.battleText = this.add.text(400, -250, this.translations['battle_start'] || 'Battle Start!', {
+            fontSize: '48px', color: '#ffffff', stroke: '#000000', strokeThickness: 6, align: 'center', fontStyle: 'bold'
+        }).setOrigin(0.5).setScrollFactor(0).setDepth(1000);
 
-        // Clear any existing sprites
         this.troopers.clear();
 
-        // Create Cinematic Borders
-        // We want them to cover from edges towards center.
-        // Use scrollFactor 0 to lock to camera. 
-        // Initially invisible/off-screen.
-        
-        // Initialize graphics
-        // Initialize graphics
-        this.borderTop = this.add.rectangle(400, 0, 4000, 200, 0x000000).setDepth(1000).setOrigin(0.5, 1);
-        this.borderBottom = this.add.rectangle(400, 600, 4000, 200, 0x000000).setDepth(1000).setOrigin(0.5, 0);
+        // Cinematic Borders
+        this.add.rectangle(400, 0, 4000, 150, 0x000000).setDepth(900).setOrigin(0.5, 1).setScrollFactor(0);
+        this.add.rectangle(400, 600, 4000, 150, 0x000000).setDepth(900).setOrigin(0.5, 0).setScrollFactor(0);
 
-        // Create Bottom HUD
         this.createHUD();
-
-        // Initial Resize to fit container
         this.scale.on('resize', this.resize, this);
         this.resize({ width: this.scale.width, height: this.scale.height });
-
-        // Start clock
-        // Simulation tick is discrete, but we want smooth playback. 
-        // Let's say 1 simulation tick = 10ms real time (100 ticks = 1 sec).
-        // Update loop handles this.
-        this.battleTime = 0;
     }
 
-    /**
-     * Create the bottom HUD bar showing team stats
-     * Layout: Team A stats (left) | Team B stats (right)
-     * Stats: 👤 Troopers, 🚀 Deployment, 📡 Communications, 🔧 Sabotage
-     */
     private createHUD() {
-        const hudY = 570; // Near bottom of logical view (600)
-        const style = { 
-            fontSize: '14px', 
-            color: '#ffffff', 
-            stroke: '#000000', 
-            strokeThickness: 2,
-            fontStyle: 'bold'
-        };
+        const hudY = 575; 
+        const style = { fontSize: '12px', color: '#ffffff', stroke: '#000000', strokeThickness: 2, fontStyle: 'bold' };
         
-        // Background bar
-        const hudBg = this.add.rectangle(400, hudY, 800, 40, 0x000000, 0.7);
-        hudBg.setDepth(900);
-        
-        // Team A Stats (left side)
-        this.teamAStatsText = this.add.text(20, hudY, this.formatTeamStats('A'), style)
-            .setOrigin(0, 0.5)
-            .setDepth(901);
-        
-        // Team B Stats (right side)
-        this.teamBStatsText = this.add.text(780, hudY, this.formatTeamStats('B'), style)
-            .setOrigin(1, 0.5)
-            .setDepth(901);
-        
-        // Top Right - Time Display (replaces center battle text)
-        this.timeText = this.add.text(780, 20, 'Time: 0', style)
-            .setOrigin(1, 0)
-            .setScrollFactor(0)
-            .setDepth(901);
+        // Team A Stats
+        this.teamAStatsText = this.add.text(20, hudY, '', style).setOrigin(0, 0.5).setDepth(901).setScrollFactor(0);
+        // Team B Stats
+        this.teamBStatsText = this.add.text(780, hudY, '', style).setOrigin(1, 0.5).setDepth(901).setScrollFactor(0);
     }
 
-    /**
-     * Format team stats for HUD display
-     */
-    private formatTeamStats(team: 'A' | 'B'): string {
-        const count = team === 'A' ? this.totalCountA - this.deployedCountA : this.totalCountB - this.deployedCountB;
-        const deployed = team === 'A' ? this.deployedCountA : this.deployedCountB;
-        const comms = team === 'A' ? this.communicationsA : this.communicationsB;
-        const sabotage = team === 'A' ? this.sabotageA : this.sabotageB;
-        
-        // Format: 👤32  🚀+04  📡77  🔧100%
-        return `👤${deployed}/${count + deployed}  🚀${deployed}  📡${comms}  🔧${sabotage}`;
-    }
-
-    /**
-     * Update HUD stats during battle
-     */
     private updateHUD() {
-        if (this.teamAStatsText) {
-            this.teamAStatsText.setText(this.formatTeamStats('A'));
-        }
-        if (this.teamBStatsText) {
-            this.teamBStatsText.setText(this.formatTeamStats('B'));
+        const format = (deployed: number, total: number, comms: number, sab: number) => 
+            `👤${deployed}/${total}  📡${comms}  🔧${sab}`;
+            
+        if (this.teamAStatsText) this.teamAStatsText.setText(format(this.deployedCountA, this.totalCountA, this.communicationsA, this.sabotageA));
+        if (this.teamBStatsText) this.teamBStatsText.setText(format(this.deployedCountB, this.totalCountB, this.communicationsB, this.sabotageB));
+        
+        // Update Timer
+        if (this.battleTimerText) {
+             const totalSeconds = this.battleTime / 100; // Convert ticks to seconds (100 ticks = 1s)
+             const m = Math.floor(totalSeconds / 60);
+             const s = (totalSeconds % 60).toFixed(1);
+             this.battleTimerText.setText(`${m.toString().padStart(2, '0')}:${s.padStart(4, '0')}`);
         }
     }
 
@@ -237,878 +165,614 @@ export class BattleScene extends Phaser.Scene {
         this.speedMultiplier = multiplier;
     }
 
-    resize(gameSize?: { width: number, height: number }) {
-        const width = gameSize ? gameSize.width : this.scale.width;
-        const height = gameSize ? gameSize.height : this.scale.height;
-
-        this.cameras.main.setViewport(0, 0, width, height);
-        
-        // Logical size is 800x600.
-        // ZOOM to fit keeping aspect ratio.
-        const scaleX = width / 800;
-        const scaleY = height / 600;
-        const zoom = Math.min(scaleX, scaleY);
-        
-        this.cameras.main.setZoom(zoom);
-        this.cameras.main.centerOn(400, 300);
-
-        // Update elements that need to stay relative to logical coordinates or screen
-        if (this.battleText) {
-             this.battleText.setPosition(width / 2, 60);
-        }
-
-        // Handle Background "Cover" scaling if present
-        if (this.bgImage) {
-            this.bgImage.setPosition(width / 2, height / 2); // Center of screen
-            
-            // Cover mode
-            const imgWidth = this.bgImage.width;
-            const imgHeight = this.bgImage.height;
-            if (imgWidth > 0 && imgHeight > 0) {
-                 const scaleX = width / imgWidth;
-                 const scaleY = height / imgHeight;
-                 const scale = Math.max(scaleX, scaleY);
-                 this.bgImage.setScale(scale);
-            }
-        }
-
-        // Borders should stay at their logical positions (0 and 600)
+    resume() {
+        if (this.isBattleEnded) return; // Don't resume after battle ends
+        this.isPaused = false;
+        if (this.pauseOverlay) this.pauseOverlay.setVisible(false);
+        if (this.onResume) this.onResume();
     }
 
-    // Removed updateElementsPosition as it's handled by camera zoom now.
-    updateElementsPosition() {}
+    pause() {
+        this.isPaused = true;
+        if (this.pauseOverlay) this.pauseOverlay.setVisible(true);
+    }
+
+    getBattleTime(): number {
+        return this.battleTime;
+    }
+
+    // --- Trooper Data Access ---
+    public getTrooperData(trooperId: string): TrooperData | null {
+        const container = this.troopers.get(trooperId);
+        if (!container) return null;
+        
+        // Get definition from map for name/skills
+        const def = this.allTroopersMap.get(trooperId);
+        
+        // Return structured data for Inspector
+        return {
+            id: trooperId,
+            attributes: {
+                hp: container.getData('hp'),
+                maxHp: container.getData('maxHp'),
+                initiative: container.getData('initiative') || 100,
+            },
+            currentWeaponId: container.getData('currentWeaponId'),
+            ammo: this.getAllAmmo(container),
+            sabotagedWeapons: container.getData('sabotagedWeapons') || [],
+            jammedWeapons: container.getData('jammedWeapons') || [],
+            wounds: container.getData('wounds') || {},
+            name: container.getData('name') || def?.name || 'Unknown',
+            team: container.getData('team'),
+            class: container.getData('class') || 'Soldier',
+            level: container.getData('level') || 1,
+            skills: def?.skills || [],
+            reserves: this.getReserves(container)
+        } as any;
+    }
+    
+    private getReserves(container: Phaser.GameObjects.Container) {
+        // Reserves are static for now unless we implement "Reload takes from Reserve" logic in log data?
+        // Actually log.data usually implies ammo deduction but reserves logic is in Trooper class.
+        // For visual, we can read basic reserves from Definition, as we don't simulate reserve decrements in logs perfectly yet?
+        // Wait, 'Trooper.ts' manages reserves logic simulation side.
+        // Visual side just needs to know it. 
+        // Let's assume Definition is source of truth for initial reserves, and we don't track reserve decrement visually yet (just magazine).
+        // Or we can store it in data container too.
+        const def = this.allTroopersMap.get(container.getData('id') || '');
+        return def?.reserves || {};
+    }
+    
+    private getAllAmmo(container: Phaser.GameObjects.Container) {
+        const ammo: Record<string, number> = {};
+        container.data.each((parent: any, key: string, value: any) => {
+            if (key.startsWith('ammo_')) {
+                const wId = key.replace('ammo_', '');
+                ammo[wId] = value;
+            }
+        }, this);
+        return ammo;
+    }
 
     update(time: number, delta: number) {
         if (this.isPaused) return;
+
+        // 1. Advance Logical Time
+        // Reduced from 100 to 50 to make the battle easier to follow (0.5x real time)
+        const ticksPerFrame = (delta / 1000) * 50 * this.speedMultiplier;
+        this.battleTime += ticksPerFrame;
         
-        // Advance battle time
-        // Base speed: 10 ticks per second (x1). x2 = 20 ticks/s.
-        const baseTicksPerSecond = 10; 
-        const ticksToAdvance = (delta / 1000) * baseTicksPerSecond * this.speedMultiplier;
-        this.battleTime += ticksToAdvance;
+        // Notify listeners of time update (for progressive log)
+        if (this.onTimeUpdate) this.onTimeUpdate(this.battleTime);
 
-        this.updateBattleText(Math.floor(this.battleTime));
-        this.updateHUD(); // Sync HUD every frame (or could throttle)
-
-        // Process Logs up to current time
+        // 2. Queue Events
         while (this.currentTurnIndex < this.battleResult.log.length) {
             const nextLog = this.battleResult.log[this.currentTurnIndex];
-            
             if (nextLog.time <= this.battleTime) {
-                this.playTurnAnimation(nextLog, () => {}); // No callback needed for queue
+                if (nextLog.actorId) {
+                    if (!this.actionQueues.has(nextLog.actorId)) {
+                        this.actionQueues.set(nextLog.actorId, []);
+                    }
+                    this.actionQueues.get(nextLog.actorId)!.push(nextLog);
+                }
                 this.currentTurnIndex++;
             } else {
                 break;
             }
         }
+
+        // 3. Process Queues per Actor
+        this.actionQueues.forEach((queue, actorId) => {
+            if (queue.length > 0 && !this.isActorBusy.get(actorId)) {
+                
+                const nextAction = queue[0];
+                
+                // SPY FIX: Prevent duplicate deploy
+                if (nextAction.action === 'deploy' && this.troopers.has(actorId)) {
+                    queue.shift(); // Discard duplicate deploy
+                    return;
+                }
+
+                // Execute
+                queue.shift();
+                this.playAction(nextAction);
+            }
+        });
         
-        if (this.currentTurnIndex >= this.battleResult.log.length) {
-             const winnerTeam = this.battleResult.winner === 'A' ? (this.translations['winner_player'] || 'PLAYER') : (this.translations['winner_enemy'] || 'ENEMY');
-             const winnerText = (this.translations['winner_team'] || 'Winner: Team {{team}}').replace('{{team}}', winnerTeam);
-             this.battleText?.setText(winnerText);
-             this.battleText?.setColor(this.battleResult.winner === 'A' ? '#00ff00' : '#ff0000');
-             this.battleText?.setDepth(1001); // Ensure above borders
+        // 4. Update HUD
+        this.updateHUD();
+        
+        // Victory Check (Throttled)
+        if (this.currentTurnIndex >= this.battleResult.log.length && Array.from(this.actionQueues.values()).every(q => q.length === 0) && Array.from(this.isActorBusy.values()).every(b => !b)) {
+            this.checkVictory();
         }
     }
-
-    updateBattleText(time: number) {
-         // Find recent message
-         // This is tricky with continuous time. Maybe just show time.
-         // FIXED: Duplicate time display. This text is now only for major events (Start/End).
-         // const timePrefix = this.translations['time_prefix'] || 'Time: ';
-         // this.battleText?.setText(`${timePrefix}${time}`);
-         // this.battleText?.setDepth(1001);
+    
+    private checkVictory() {
+         const winnerText = this.battleResult.winner === 'A' ? "VICTORY!" : "DEFEAT!";
+         if (this.battleText && this.battleText.text !== winnerText) {
+             this.isPaused = true; // Stop the timer
+             this.isBattleEnded = true; // Permanently end battle
+             this.battleText.setText(winnerText);
+             this.battleText.setColor(this.battleResult.winner === 'A' ? '#00ff00' : '#ff0000');
+             this.tweens.add({
+                 targets: this.battleText,
+                 scale: { from: 0, to: 1.5 },
+                 y: 300, 
+                 duration: 1000,
+                 ease: 'Elastic',
+                 onComplete: () => this.celebrateVictory()
+             });
+         }
     }
 
-    // Removed processNextTurn and playBatchAnimations
+    private celebrateVictory() {
+        const victoryPhrases = [
+            "Yeah!", "Woohoo!", "Got 'em!", "Easy!", "Victory!",
+            "Too slow!", "Boom!", "Owned!", "GG!", "Nice!",
+            "Crushed!", "Dominated!", "Ha ha!", "Next!", "Done!"
+        ];
 
-    playTurnAnimation(log: BattleLogEntry, onComplete: () => void) {
+        const winnerTeam = this.battleResult.winner;
+        // Move completely off-screen (Canvas width is 800)
+        const targetX = winnerTeam === 'A' ? 950 : -150; 
+
+        let delay = 0;
+        this.troopers.forEach((container, id) => {
+            const team = container.getData('team');
+            const hp = container.getData('hp') || 0;
+            
+            // Only living winners celebrate
+            if (team === winnerTeam && hp > 0) {
+                // Say a phrase with delay
+                this.time.delayedCall(delay, () => {
+                    const phrase = victoryPhrases[Math.floor(Math.random() * victoryPhrases.length)];
+                    this.showFloatingText(container.x, container.y - 40, phrase, '#ffff00');
+                });
+
+                // Run to enemy side with delay
+                this.time.delayedCall(delay + 300, () => {
+                    // Face the right direction
+                    container.scaleX = winnerTeam === 'A' ? 2.0 : -2.0;
+                    
+                    this.tweens.add({
+                        targets: container,
+                        x: targetX + (Math.random() * 100 - 50),
+                        duration: 1500 + Math.random() * 500,
+                        ease: 'Power2'
+                    });
+                });
+
+                delay += 200; // Stagger celebrations
+            }
+        });
+    }
+    
+    resize(gameSize: { width: number, height: number }) {
+        this.mapSystem.resize(gameSize.width, gameSize.height);
+        this.cameras.main.setViewport(0, 0, gameSize.width, gameSize.height);
+        const zoom = Math.min(gameSize.width / 800, gameSize.height / 600);
+        this.cameras.main.setZoom(zoom);
+        this.cameras.main.centerOn(400, 300);
+    }
+
+    // --- ANIMATION CONTROLLER ---
+
+    private playAction(log: BattleLogEntry) {
+        const actorId = log.actorId;
+        this.isActorBusy.set(actorId, true);
+
+        const onComplete = () => {
+             this.isActorBusy.set(actorId, false);
+        };
+        
         if (log.action === 'deploy') {
             this.handleDeploy(log, onComplete);
             return;
         }
 
-        const actor = this.troopers.get(log.actorId);
+        const actor = this.troopers.get(actorId);
         if (!actor) {
+             onComplete();
+             return;
+        }
+
+        switch (log.action) {
+            case 'move': this.animateMove(actor, log, onComplete); break;
+            case 'attack': this.animateAttack(actor, log, onComplete); break;
+            case 'switch_weapon': this.animateSwitch(actor, log, onComplete); break;
+            case 'reload': this.animateReload(actor, log, onComplete); break;
+            case 'wait': 
+                if (log.message.includes('dies')) this.animateDeath(actor, log, onComplete);
+                else this.time.delayedCall(200 / this.speedMultiplier, onComplete);
+                break;
+            case 'heal': this.animateHeal(actor, log, onComplete); break;
+            case 'sabotage': this.animateSabotage(actor, log, onComplete); break;
+            default: onComplete();
+        }
+    }
+
+    private handleDeploy(log: BattleLogEntry, onComplete: () => void) {
+        if (this.troopers.has(log.actorId)) {
             onComplete();
             return;
+        }
+
+        const def = this.allTroopersMap.get(log.actorId);
+        const team = def?.team || 'A';
+        const color = team === 'A' ? 0x00ff00 : 0xff0000;
+        
+        let x = 400, y = 300;
+        
+        // Find the LAST deploy log entry for this trooper (spy skill creates a second entry with updated position)
+        const deployEntries = this.battleResult.log.filter(l => 
+            l.action === 'deploy' && l.actorId === log.actorId && l.targetPosition
+        );
+        const finalDeployEntry = deployEntries[deployEntries.length - 1] || log;
+        
+        if (finalDeployEntry.targetPosition) {
+             x = 50 + (finalDeployEntry.targetPosition.x / 1000) * 700;
+             y = 100 + finalDeployEntry.targetPosition.y; 
+        }
+
+        // Make Spies deploy on enemy side logic if needed, but 'targetPosition' should already reflect this from simulation logs.
+        
+        const container = this.add.container(x, y);
+        // Circular hitbox matching trooper body (radius 15, centered at trooper)
+        const hitArea = new Phaser.Geom.Circle(0, 0, 15);
+        container.setInteractive(hitArea, Phaser.Geom.Circle.Contains);
+        
+        container.on('pointerdown', () => {
+             // Emit ID, UI handles selection toggle
+             if (this.onTrooperClick) this.onTrooperClick(log.actorId);
+        });
+
+        // Hover Effect
+        container.on('pointerover', () => {
+            document.body.style.cursor = 'pointer';
+            this.tweens.add({
+                targets: container,
+                scale: 2.2, // 2.0 * 1.1
+                duration: 100
+            });
+        });
+
+        container.on('pointerout', () => {
+            document.body.style.cursor = 'default';
+             this.tweens.add({
+                targets: container,
+                scale: 2.0,
+                duration: 100
+            });
+        });
+
+        const gfx = this.add.graphics();
+        gfx.fillStyle(color, 1);
+        gfx.fillCircle(0, 0, 10);
+        
+        // Weapon sprite (line representing equipped weapon)
+        const wpnLine = this.add.graphics();
+        wpnLine.lineStyle(3, 0xcccccc, 1);
+        wpnLine.lineBetween(8, -2, 20, -2); // Default weapon line
+        wpnLine.setName('weaponGfx');
+
+        container.add([gfx, wpnLine]);
+        container.setDepth(1000); // Above pause overlay (999) so troopers can be clicked while paused
+        
+        // Initial Data Sync
+        container.setData('id', log.actorId);
+        if (def) {
+            container.setData('name', def.name);
+            container.setData('class', def.class);
+            container.setData('level', def.level);
+            container.setData('team', team);
+            container.setData('currentWeaponId', def.currentWeaponId);
+            container.setData('hp', def.attributes.hp);
+            container.setData('maxHp', def.attributes.maxHp);
+            container.setData('initiative', def.attributes.initiative);
+            if (def.ammo) Object.entries(def.ammo).forEach(([k, v]) => container.setData(`ammo_${k}`, v));
+            container.setData('jammedWeapons', def.jammedWeapons || []);
+        }
+        
+        // Sync sabotagedWeapons from log (sabotage happens BEFORE deploy in simulation)
+        const sabotagedFromLog: string[] = [];
+        for (const entry of this.battleResult.log) {
+            if (entry.time > log.time) break; // Only check events before/at deploy time
+            // Sabotage events use 'jam_weapon' action in implementations.ts
+            if (entry.action === 'jam_weapon' && entry.targetId === log.actorId && entry.data?.weaponId) {
+                if (!sabotagedFromLog.includes(entry.data.weaponId)) {
+                    sabotagedFromLog.push(entry.data.weaponId);
+                }
+            }
+        }
+        container.setData('sabotagedWeapons', sabotagedFromLog);
+
+        this.troopers.set(log.actorId, container);
+        if (team === 'A') this.deployedCountA++; else this.deployedCountB++;
+        
+        container.setAlpha(0);
+        container.scale = 0; // Start at 0 for pop-in
+        this.tweens.add({
+            targets: container,
+            alpha: 1,
+            scale: 2.0, // Target Scale 2.0 (bigger troopers)
+            duration: 500 / this.speedMultiplier,
+            ease: 'Back.out',
+            onComplete: () => {
+                this.updateWeaponSprite(container);
+                onComplete();
+            }
+        });
+    }
+    
+    private updateWeaponSprite(container: Phaser.GameObjects.Container) {
+        const wpnGfx = container.getByName('weaponGfx') as Phaser.GameObjects.Graphics;
+        if (!wpnGfx) return;
+        
+        const weaponId = container.getData('currentWeaponId') || '';
+        wpnGfx.clear();
+        
+        // Draw weapon based on type
+        if (weaponId.includes('sniper') || weaponId.includes('rifle')) {
+            // Long rifle
+            wpnGfx.lineStyle(3, 0x8b4513, 1); // Brown stock
+            wpnGfx.lineBetween(5, -2, 12, -2);
+            wpnGfx.lineStyle(2, 0x444444, 1); // Metal barrel
+            wpnGfx.lineBetween(12, -2, 28, -2);
+        } else if (weaponId.includes('shotgun')) {
+            // Shotgun
+            wpnGfx.lineStyle(4, 0x444444, 1);
+            wpnGfx.lineBetween(5, -2, 22, -2);
+        } else if (weaponId.includes('pistol') || weaponId.includes('revolver') || weaponId.includes('beretta') || weaponId.includes('eagle')) {
+            // Pistol
+            wpnGfx.lineStyle(3, 0x333333, 1);
+            wpnGfx.lineBetween(8, -2, 16, -2);
+        } else if (weaponId.includes('minigun') || weaponId.includes('machine') || weaponId.includes('gatling')) {
+            // Heavy weapon
+            wpnGfx.lineStyle(5, 0x555555, 1);
+            wpnGfx.lineBetween(5, -2, 25, -2);
+        } else if (weaponId.includes('knife') || weaponId === 'fists') {
+            // Melee - short or no weapon
+            if (weaponId.includes('knife')) {
+                wpnGfx.lineStyle(2, 0xcccccc, 1);
+                wpnGfx.lineBetween(10, -2, 18, -2);
+            }
+            // Fists: no weapon drawn
+        } else if (weaponId.includes('bazooka') || weaponId.includes('rocket') || weaponId.includes('launcher')) {
+            // Launcher
+            wpnGfx.lineStyle(6, 0x2d5016, 1);
+            wpnGfx.lineBetween(5, -2, 26, -2);
+        } else {
+            // Default weapon line
+            wpnGfx.lineStyle(2, 0xaaaaaa, 1);
+            wpnGfx.lineBetween(8, -2, 18, -2);
+        }
+    }
+    
+    // --- ANIMATIONS ---
+    
+    private animateMove(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
+        if (!log.targetPosition) {
+             this.tweens.add({ targets: actor, x: actor.x + 10, duration: 100, yoyo: true, repeat: 2, onComplete });
+             return;
+        }
+
+        const targetX = 50 + (log.targetPosition.x / 1000) * 700;
+        const targetY = 100 + log.targetPosition.y;
+        
+        if (targetX > actor.x) actor.scaleX = 1.5; else actor.scaleX = -1.5;
+
+        this.tweens.add({
+            targets: actor,
+            x: targetX,
+            y: targetY,
+            duration: 800 / this.speedMultiplier,
+            ease: 'Power1',
+            onComplete
+        });
+    }
+
+    private animateAttack(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
+        // Data Sync (Ammo)
+        if (log.data?.weaponId) {
+             const wId = log.data.weaponId;
+             const cur = actor.getData(`ammo_${wId}`) || 0;
+             if (cur > 0) actor.setData(`ammo_${wId}`, cur - 1);
         }
 
         const target = log.targetId ? this.troopers.get(log.targetId) : null;
+        let targetX = target ? target.x : (actor.x + 50 * actor.scaleX);
+        let targetY = target ? target.y : actor.y;
+        
+        if (log.targetPosition) {
+             targetX = 50 + (log.targetPosition.x / 1000) * 700;
+             targetY = 100 + log.targetPosition.y;
+        }
 
-        if (log.action === 'wait') {
-             // Just a small delay
-             this.time.delayedCall(200, onComplete);
-             return;
+        // Logic sync for Sabotage Event (if log has action 'sabotage', or we check for it here)
+        // Since we are inside 'animateAttack', this implies an attack caused sabotage?
+        // No, usually 'sabotage' is a skill use. 
+        // We will add a check if log.action === 'sabotage' in playAction switch, but here we can check if this attack caused sabotage.
+        // Actually, let's just ensure if we see data updates, we apply them.
+        
+        if (log.action === 'sabotage' && log.targetId && log.data?.weaponId) {
+             const t = this.troopers.get(log.targetId);
+             if (t) {
+                 const list = t.getData('sabotagedWeapons') || [];
+                 if (!list.includes(log.data.weaponId)) {
+                     t.setData('sabotagedWeapons', [...list, log.data.weaponId]);
+                     this.showFloatingText(t.x, t.y - 60, "SABOTAGED!", '#ff0000');
+                 }
+             }
         }
 
 
-
-        if (log.action === 'move') {
-            // this.showFloatingText(actor.x, actor.y - 50, "MOVING", '#aaaaaa');
-            
-            if (log.targetPosition !== undefined) {
-                // Map Logic Coordinates to Screen Coordinates
-                // Logic X: 0-1000 -> Screen X: 50-750 (approx)
-                // Logic Y: 0-400 -> Screen Y: 100-500
-                const targetPos = log.targetPosition as any as { x: number, y: number }; // Cast because types might be mixed during refactor
-                
-                const targetX = 50 + (targetPos.x / 1000) * 700;
-                const targetY = 100 + targetPos.y; // Direct mapping with offset
-
-                this.tweens.add({
-                    targets: actor,
-                    x: targetX,
-                    y: targetY,
-                    duration: 800,
-                    ease: 'Power2',
-                    onComplete: () => {
-                        if (actor.scene) {
-                            actor.setData('originX', targetX);
-                            actor.setData('originY', targetY);
-                        }
-                        onComplete();
+        // VFX System
+        const weaponId = log.data?.weaponId || 'default';
+        const effect = EffectFactory.getEffect(weaponId);
+        
+        effect.play(this, actor.x, actor.y, targetX, targetY, () => {
+            // Impact Logic
+            if (log.isMiss) {
+                this.showFloatingText(targetX, targetY - 20, "MISS", '#888');
+            } else if (target) {
+                if (log.damage) {
+                     const currentHp = target.getData('hp') || 0;
+                     const newHp = Math.max(0, currentHp - log.damage);
+                     target.setData('hp', newHp); // Live Update!
+                     this.showFloatingText(target.x, target.y - 40, `-${log.damage}`, '#f00');
+                }
+                if (log.hitLocation) {
+                    const wounds = target.getData('wounds') || {};
+                    switch(log.hitLocation) {
+                        case 'head': w: wounds.head = true; break;
+                        case 'torso': wounds.chest = true; break;
+                        case 'arm': wounds.leftArm = true; break;
+                        case 'leg': wounds.leftLeg = true; break;
                     }
-                });
-            } else {
-                // Fallback wiggle
-                this.tweens.add({
-                    targets: actor,
-                    x: actor.x + (actor.getData('team') === 'A' ? 20 : -20),
-                    duration: 500,
-                    yoyo: true,
-                    onComplete: onComplete
-                });
+                    target.setData('wounds', wounds);
+                }
             }
-            return;
+            onComplete();
+        });
+        
+        // Recoil
+        this.tweens.add({
+            targets: actor,
+            x: actor.x - (5 * actor.scaleX),
+            duration: 50 / this.speedMultiplier,
+            yoyo: true
+        });
+    }
+
+    private animateSwitch(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
+        const wId = log.data?.weaponId;
+        const reason = log.data?.reason;
+        
+        // Sabotage Logic
+        if (reason === 'sabotaged') {
+             // Visual text already shown? 
+             this.showFloatingText(actor.x, actor.y - 60, "SABOTAGED!", '#ff0000');
+             
+             // Update Sabotaged State
+             // Note: log.data.weaponId is result weapon. We need to mark 'old' weapon as sabotaged.
+             // We can infer it was the one equipped previously.
+             const oldWap = actor.getData('currentWeaponId');
+             if (oldWap) {
+                 const list = actor.getData('sabotagedWeapons') || [];
+                 if (!list.includes(oldWap)) {
+                     actor.setData('sabotagedWeapons', [...list, oldWap]);
+                 }
+             }
+        }
+        else if (reason === 'jammed') {
+             this.showFloatingText(actor.x, actor.y - 60, "JAMMED!", '#ff8800');
+             const oldWap = actor.getData('currentWeaponId');
+             if (oldWap) {
+                 const list = actor.getData('jammedWeapons') || [];
+                 if (!list.includes(oldWap)) {
+                     actor.setData('jammedWeapons', [...list, oldWap]);
+                 }
+             }
         }
 
-        if (log.action === 'heal') {
-            const target = log.targetId ? this.troopers.get(log.targetId) : null;
-            if (target && target.scene) {
-                this.showFloatingText(actor.x, actor.y - 50, this.translations['heal_shout'] || "HEAL!", '#00ff00');
-                this.tweens.add({
-                    targets: actor,
-                    x: target.x,
-                    y: target.y,
-                    duration: 300,
-                    yoyo: true,
-                    onComplete: () => {
-                        if (target.scene) {
-                            this.showFloatingText(target.x, target.y - 50, `+${log.heal}`, '#00ff00');
-                            this.updateHealth(target, -(log.heal || 0));
-                        }
-                        // Return to origin?
-                        this.tweens.add({
-                            targets: actor,
-                            x: actor.getData('originX') || actor.x,
-                            y: actor.getData('originY') || actor.y,
-                            duration: 300,
-                            onComplete: onComplete
-                        });
-                    }
-                });
-            } else {
+        actor.setData('currentWeaponId', wId);
+        
+        // Use uniform scale animation to avoid oval shape
+        const currentScale = actor.scaleX; // Should be 2.0
+        this.tweens.add({
+            targets: actor,
+            scale: currentScale * 0.85, // Slight shrink effect
+            duration: 80 / this.speedMultiplier,
+            yoyo: true,
+            onComplete: () => {
+                actor.setScale(currentScale); // Ensure scale is reset properly
+                this.updateWeaponSprite(actor);
                 onComplete();
             }
-            return;
-        }
-
-        if (log.action === 'switch_weapon') {
-            const weaponId = log.data?.weaponId;
-            // Update state (null means Fists/Unarmed)
-            actor.setData('currentWeaponId', weaponId === null ? undefined : weaponId);
-            
-            this.showFloatingText(actor.x, actor.y - 40, "Switch!", '#88ccff');
-            
-            // Visual Squish
-            this.tweens.add({
-                targets: actor,
-                scaleX: 1.1, 
-                scaleY: 0.9,
-                duration: 100,
-                yoyo: true,
-                onComplete: onComplete
-            });
-            return;
-        }
-
-        if (log.action === 'attack') {
-             // Sync Ammo Logic using WeaponID from log
-             const weaponId = log.data?.weaponId;
-             if (weaponId) {
-                 const currentAmmo = actor.getData(`ammo_${weaponId}`) || 0;
-                 actor.setData(`ammo_${weaponId}`, Math.max(0, currentAmmo - 1));
-             }
-
-             // VISUALS: Determine Projectile Type
-             const isMelee = !weaponId || ['knife', 'fists', 'wrestler', 'fists_of_fury'].includes(weaponId);
-             const isRocket = ['bazooka', 'bazooka_m1', 'bazooka_m25', 'infernal_tube', 'rocket_launcher'].includes(weaponId);
-             
-             let targetX = 0;
-             let targetY = 0;
-
-             if (log.targetPosition) {
-                 // Miss / Stray endpoint
-                 const targetPos = log.targetPosition as any as { x: number, y: number };
-                 targetX = 50 + (targetPos.x / 1000) * 700;
-                 targetY = 100 + targetPos.y;
-             } else if (target && target.scene) {
-                 targetX = target.x;
-                 targetY = target.y;
-             } else {
-                 // Fallback
-                 const forwardX = actor.x + (actor.getData('originX') < 400 ? 50 : -50);
-                 targetX = forwardX;
-                 targetY = actor.y;
-             }
-
-             // Handle Projectiles
-             if (isMelee) {
-                 // No Projectile - Just Lunge/Effect
-                 const forwardX = actor.x + (actor.getData('originX') < 400 ? 30 : -30);
-                 this.tweens.add({
-                     targets: actor,
-                     x: forwardX,
-                     duration: 100,
-                     yoyo: true,
-                     onComplete: () => {
-                         // Impact at peak of lunge
-                         if (log.isMiss) {
-                             this.showFloatingText(targetX, targetY - 20, this.translations['miss'] || "MISS", '#888888');
-                         } else if (target && target.scene) {
-                             if (log.damage) this.showFloatingText(target.x, target.y - 50, `-${log.damage}`, '#ff0000');
-                             if (log.isCrit) this.showFloatingText(target.x, target.y - 70, this.translations['crit_shout'] || "CRIT!", '#ff8800');
-                             this.updateHealth(target, log.damage || 0);
-                         }
-                         onComplete();
-                     }
-                 });
-                 return; // Animation handled by recoil/lunge
-             } else {
-                 // Ranged - Projectile
-                 let color = 0xffff00; // Default Yellow Bullet
-                 let size = 3;
-                 let speed = 200;
-                 
-                 if (isRocket) {
-                     color = 0xff4500; // Orange Red
-                     size = 6;
-                     speed = 600; // Slower
-                 }
-
-                 const bullet = this.add.circle(actor.x, actor.y, size, color);
-                 
-                 // Recoil first
-                 this.tweens.add({
-                     targets: actor,
-                     x: actor.x + (actor.getData('team') === 'A' ? -5 : 5),
-                     duration: 50,
-                     yoyo: true
-                 });
-
-                 // Shoot projectile
-                 this.tweens.add({
-                     targets: bullet,
-                     x: targetX,
-                     y: targetY,
-                     duration: speed,
-                     onComplete: () => {
-                         bullet.destroy();
-                         
-                         // Impact effects
-                         if (isRocket) {
-                             // Explosion Effect
-                             const explosion = this.add.circle(targetX, targetY, 30, 0xffaa00, 0.7);
-                             this.tweens.add({
-                                 targets: explosion,
-                                 scale: 2,
-                                 alpha: 0,
-                                 duration: 300,
-                                 onComplete: () => explosion.destroy()
-                             });
-                         }
-
-                         if (log.isMiss) {
-                             this.showFloatingText(targetX, targetY - 20, this.translations['miss'] || "MISS", '#888888');
-                         } else if (target && target.scene) {
-                             // Hit effect
-                             if (log.damage) {
-                                this.showFloatingText(target.x, target.y - 50, `-${log.damage}`, '#ff0000');
-                             }
-                             if (log.isCrit) {
-                                 this.showFloatingText(target.x, target.y - 70, this.translations['crit_shout'] || "CRIT!", '#ff8800');
-                             }
-                              
-                              if (log.isVehicleHit) {
-                                  this.updateVehicleHealth(target, log.damage || 0);
-                              } else {
-                                  this.updateHealth(target, log.damage || 0);
-                              }
-                          }
-                          // onComplete called after bullet hits? Or immediately?
-                          // Better after hit for flow.
-                          if (!isRocket) onComplete(); // Rocket has explosion anim
-                          else this.time.delayedCall(300, onComplete);
-                      }
-                  });
-              }
-              return;
-          } else if (log.action === 'reload') {
-             const weaponId = actor.getData('currentWeaponId');
-              if (weaponId) {
-                 const currentAmmo = actor.getData(`ammo_${weaponId}`) || 0;
-                 actor.setData(`ammo_${weaponId}`, currentAmmo + 1);
-             }
-        } else if (log.action === 'switch_weapon') {
-             // Just update stored weapon ID (no visual icon on sprite)
-             const newWeaponId = log.data?.weaponId;
-             if (newWeaponId) {
-                 actor.setData('currentWeaponId', newWeaponId);
-             }
-             this.showFloatingText(actor.x, actor.y - 40, this.translations['switch_weapon'] || 'SWITCH!', '#ffaa00');
-             this.updateStatusVisuals(actor);
-             onComplete();
-             return;
-        } else if (log.action === 'jam_weapon') {
-             const victimId = log.targetId || log.actorId; 
-             const victim = this.troopers.get(victimId);
-             
-             if (victim) {
-                 const weaponId = log.data?.weaponId;
-                 if (weaponId) {
-                     const currentJams = victim.getData('jammedWeapons') || [];
-                     if (!currentJams.includes(weaponId)) {
-                         currentJams.push(weaponId);
-                         victim.setData('jammedWeapons', currentJams);
-                     }
-                 }
-                 this.showFloatingText(victim.x, victim.y - 60, this.translations['jammed'] || "JAMMED!", '#ff00ff');
-                 this.updateStatusVisuals(victim);
-             }
-             onComplete();
-             return;
-        } else if (log.action === 'use_equipment') {
-             // Target of the jam
-             const targetId = log.targetId || log.actorId; // Sometimes self (grenade fail?) or target
-             
-             // Wait, jam_weapon action usually has a target.
-             // combat.ts line 961: targetId: victim.id
-             // combat.ts line 559: actorId: actor.id (grenade shock self drop?) - checking combat.ts
-             // Line 559: unit.disarmed.push(unit.currentWeaponId); log... action 'jam_weapon'.
-             // So target is implicit "unit" which is `unit.id`. But the log uses `actorId` as the source of the grenade?
-             // checking combat.ts line 559 again in Step 467:
-             // log.push({ time, actorId: actor.id, ... action: 'jam_weapon', message: ... });
-             // It doesn't specify targetId! It assumes the message context.
-             // But valid structure needs targetId if it affects someone else.
-             // In splash damage (line 559), `unit` is the victim. `actor` is the thrower.
-             // The log line 559 acts on `unit`. It SHOULD have `targetId: unit.id`.
-             // Wait, line 559: `log.push({ time, actorId: actor.id, actorName: actor.name, action: 'jam_weapon', message: ... })`
-             // If targetId is missing, BattleScene won't know who dropped the weapon easily unless we parse message or fix backend.
-             
-             // FIX BACKEND: Ensure jam_weapon log has targetId.
-             // But for now, let's assume `targetId` is set in the log entry if it's a sabotage.
-             // Sabotage logic (line 953 in implementations.ts Step 454):
-             // targetId: victim.id. This is correct.
-             
-             // So for Sabotage, we use log.targetId.
-             const victimId = log.targetId || log.actorId; 
-             const victim = this.troopers.get(victimId);
-             
-             if (victim) {
-                 const weaponId = log.data?.weaponId;
-                 if (weaponId) {
-                     const currentJams = victim.getData('jammedWeapons') || [];
-                     if (!currentJams.includes(weaponId)) {
-                         currentJams.push(weaponId);
-                         victim.setData('jammedWeapons', currentJams);
-                     }
-                 }
-                 this.showFloatingText(victim.x, victim.y - 60, this.translations['jammed'] || "JAMMED!", '#ff00ff');
-                 this.updateStatusVisuals(victim);
-             }
-             onComplete();
-             return;
-        }
-
-        if (log.action === 'use_equipment') {
-            this.showFloatingText(actor.x, actor.y - 50, this.translations['grenade_shout'] || "GRENADE!", '#ff8800');
-            
-            let targetX = actor.x;
-            let targetY = actor.y;
-
-            if (log.targetPosition) {
-                const targetPos = log.targetPosition as any as { x: number, y: number };
-                targetX = 50 + (targetPos.x / 1000) * 700;
-                targetY = 100 + targetPos.y;
-            }
-            
-            const grenade = this.add.circle(actor.x, actor.y, 5, 0x000000);
-            this.tweens.add({
-                targets: grenade,
-                x: targetX,
-                y: targetY, 
-                duration: 500,
-                ease: 'Quad.easeOut',
-                onComplete: () => {
-                    grenade.destroy();
-                    const explosion = this.add.circle(targetX, targetY, 50, 0xffaa00, 0.5);
-                    this.tweens.add({
-                        targets: explosion,
-                        scale: 2,
-                        alpha: 0,
-                        duration: 300,
-                        onComplete: () => {
-                            explosion.destroy();
-                            onComplete();
-                        }
-                    });
-                }
-            });
-            return;
-        }
-
-        if (log.action === 'jam_weapon') {
-             if (log.targetId && log.data?.weaponId) {
-                 const target = this.troopers.get(log.targetId);
-                 if (target) {
-                     const jammed = target.getData('jammedWeapons') || [];
-                     target.setData('jammedWeapons', [...jammed, log.data.weaponId]);
-                     this.showFloatingText(target.x, target.y - 60, "JAMMED!", '#ff0000');
-                     this.updateStatusVisuals(target);
-                 } else {
-                     // Store for later deployment
-                     const pending = this.pendingJams.get(log.targetId) || [];
-                     this.pendingJams.set(log.targetId, [...pending, log.data.weaponId]);
-                 }
-             }
-             onComplete();
-             return;
-        }
-
-        // Catch-all for unhandled actions (shouldn't be reachable if all types handled)
-        console.warn(`Unhandled action: ${log.action}`);
-        onComplete();
+        });
     }
 
-    private updateStatusVisuals(container: Phaser.GameObjects.Container) {
-        const currentWeaponId = container.getData('currentWeaponId');
-        const jammedWeapons = container.getData('jammedWeapons') || [];
-        const sabotagedWeapons = container.getData('sabotagedWeapons') || [];
-        
-        const isJammed = currentWeaponId && jammedWeapons.includes(currentWeaponId);
-        const isSabotaged = currentWeaponId && sabotagedWeapons.includes(currentWeaponId);
-        
-        // Jammed Icon
-        let jamIcon = container.getByName('jamIcon') as Phaser.GameObjects.Text;
-        
-        if (isJammed) {
-            if (!jamIcon) {
-                jamIcon = this.add.text(10, -50, '🚫', { fontSize: '16px' }).setOrigin(0.5);
-                jamIcon.setName('jamIcon');
-                container.add(jamIcon);
-            }
-        } else {
-            if (jamIcon) {
-                jamIcon.destroy();
-            }
+    private animateReload(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
+        const wId = actor.getData('currentWeaponId');
+        if (wId) {
+             const cur = actor.getData(`ammo_${wId}`) || 0;
+             actor.setData(`ammo_${wId}`, cur + 1);
         }
-
-        // Sabotaged Icon
-        let sabIcon = container.getByName('sabIcon') as Phaser.GameObjects.Text;
         
-        if (isSabotaged) {
-            if (!sabIcon) {
-                sabIcon = this.add.text(-10, -50, '⚠️', { fontSize: '16px' }).setOrigin(0.5);
-                sabIcon.setName('sabIcon');
-                container.add(sabIcon);
-            }
-        } else {
-            if (sabIcon) {
-                sabIcon.destroy();
-            }
-        }
+        this.showFloatingText(actor.x, actor.y - 50, "RELOAD", '#0f0');
+        this.time.delayedCall(300 / this.speedMultiplier, onComplete);
     }
-
-    handleDeploy(log: BattleLogEntry, onComplete: () => void) {
-        const trooper = this.allTroopersMap.get(log.actorId);
-        if (!trooper) {
-            onComplete();
-            return;
-        }
-
-        const isLeft = trooper.team === 'A';
-        
-        let x = 0;
-        let y = 0;
-
-        if (log.targetPosition) {
-             const targetPos = log.targetPosition;
-             x = 50 + (targetPos.x / 1000) * 700;
-             y = 100 + targetPos.y;
-        } else {
-            // Fallback (Should not happen for initial deploy if combat.ts is correct)
-            const randomOffset = Math.floor(Math.random() * 200);
-            x = isLeft ? 50 + randomOffset : 550 + randomOffset;
-            y = 100 + Math.floor(Math.random() * 400);
-        }
-        
-        // Update Reserve Counts & Deployment Points
-        const cost = getDeploymentCost(trooper);
-        if (isLeft) {
-            this.deployedCountA++;
-            this.deploymentA += cost;
-            const remaining = Math.max(0, this.totalCountA - this.deployedCountA);
-            this.reserveTextA?.setText(`Reserves: ${remaining}`);
-        } else {
-            this.deployedCountB++;
-            this.deploymentB += cost;
-            const remaining = Math.max(0, this.totalCountB - this.deployedCountB);
-            this.reserveTextB?.setText(`Reserves: ${remaining}`);
-        }
-
-        this.updateHUD(); // Immediate update on deploy
-
-        this.createTrooperSprite(trooper, x, y, isLeft ? 0x00ff00 : 0xff0000, isLeft);
-
-        const container = this.troopers.get(trooper.id);
-        if (container) {
-            // Apply Pending Jams
-            const pending = this.pendingJams.get(trooper.id);
-            if (pending) {
-                container.setData('jammedWeapons', pending);
-            }
-            // Sync Sabotage Data
-            if (trooper.sabotagedWeapons) {
-                container.setData('sabotagedWeapons', trooper.sabotagedWeapons);
-            }
-            
-            this.updateStatusVisuals(container);
-
-            container.setAlpha(0);
-            container.y -= 50;
-            this.tweens.add({
-                targets: container,
-                alpha: 1,
-                y: y,
-                duration: 500,
-                ease: 'Bounce.easeOut',
-                onComplete: onComplete
-            });
-        } else {
-            onComplete();
-        }
-    }
-
-    createTrooperSprite(trooper: Trooper, x: number, y: number, color: number, isLeft: boolean) {
-        // Prevent Duplicates: Destroy existing if present
-        if (this.troopers.has(trooper.id)) {
-            this.troopers.get(trooper.id)?.destroy();
-            this.troopers.delete(trooper.id);
-        }
-
-        const container = this.add.container(x, y);
-
-        // Vehicle Graphics
-        if (trooper.vehicle) {
-            let vColor = 0x555555;
-            let width = 45;
-            let height = 30;
-            switch(trooper.vehicle.type) {
-                case 'light_tank': vColor = 0x556B2F; width = 70; height = 45; break;
-                case 'heavy_tank': vColor = 0x2F4F4F; width = 90; height = 60; break;
-                case 'motorcycle': vColor = 0x4682B4; width = 40; height = 20; break;
-                case 'helicopter': vColor = 0x708090; width = 80; height = 15; break;
-                case 'fighter_jet': vColor = 0xC0C0C0; width = 60; height = 10; break;
-            }
-            
-            // Draw Main Chassis
-            const chassis = this.add.rectangle(0, 15, width, height, vColor);
-            chassis.setName('vehicleChassis');
-            container.add(chassis);
-
-            if (trooper.vehicle.type.includes('tank')) {
-                 const turret = this.add.rectangle(0, 5, width * 0.6, height * 0.4, vColor);
-                 container.add(turret);
-            }
-            if (trooper.vehicle.type === 'helicopter') {
-                const rotor = this.add.rectangle(0, -10, width + 20, 4, 0x111111);
-                this.tweens.add({
-                    targets: rotor,
-                    scaleX: 0.1,
-                    yoyo: true,
-                    repeat: -1,
-                    duration: 50
-                });
-                container.add(rotor);
-            }
-
-            // Vehicle HP Bar (Blue)
-            const vHpBg = this.add.rectangle(0, 24, 40, 4, 0x000000);
-            const vHpBar = this.add.rectangle(0, 24, 40, 4, 0x0000ff);
-            vHpBg.setName('vehicleHpBg');
-            vHpBar.setName('vehicleHpBar');
-            container.add(vHpBg);
-            container.add(vHpBar);
-
-            container.setData('vehicleHpBar', vHpBar);
-            container.setData('vehicleMaxHp', trooper.vehicle.maxHp);
-            container.setData('vehicleHp', trooper.vehicle.hp);
-        }
-
-        // Body
-        const circle = this.add.circle(0, 0, 20, color);
-        container.add(circle);
-
-        // Weapon (indicates direction)
-        const weapon = this.add.rectangle(isLeft ? 15 : -15, 5, 20, 5, 0x888888);
-        container.add(weapon);
-
-        // Name
-        const nameText = this.add.text(0, -35, trooper.name, { fontSize: '12px', color: '#fff' }).setOrigin(0.5);
-        container.add(nameText);
-
-        // HP Bar Background
-        const hpBarBg = this.add.rectangle(0, 30, 40, 6, 0x000000);
-        container.add(hpBarBg);
-
-        // HP Bar Foreground
-        const hpBar = this.add.rectangle(0, 30, 40, 6, 0x00ff00);
-        container.add(hpBar);
-
-        // Store data for updates
-        container.setData('hpBar', hpBar);
-        container.setData('maxHp', trooper.attributes.maxHp);
-        container.setData('currentHp', trooper.attributes.hp);
-        container.setData('originX', x);
-        container.setData('originY', y);
-        container.setData('team', isLeft ? 'A' : 'B');
-        
-        // Initialize Ammo
-        if (trooper.skills) {
-             trooper.skills.forEach(s => {
-                 // Initialize ammo for all weapon skills
-                 if ((s as any).capacity) { // Duck typing Weapon
-                     container.setData(`ammo_${s.id}`, trooper.ammo?.[s.id] ?? (s as any).capacity);
+    
+    private animateHeal(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
+        const target = log.targetId ? this.troopers.get(log.targetId) : null;
+        if (target) {
+             this.tweens.add({
+                 targets: actor,
+                 x: target.x,
+                 duration: 300 / this.speedMultiplier,
+                 yoyo: true,
+                 onComplete: () => {
+                     const cur = target.getData('hp') || 0;
+                     const max = target.getData('maxHp') || 10;
+                     target.setData('hp', Math.min(max, cur + (log.heal || 0)));
+                     this.showFloatingText(target.x, target.y - 50, `+${log.heal}`, '#0f0');
+                     onComplete();
                  }
              });
-             container.setData('currentWeaponId', trooper.currentWeaponId);
-             container.setData('jammedWeapons', trooper.jammedWeapons || []);
-        }
-
-
-        this.troopers.set(trooper.id, container);
-
-        // Interaction
-        const hitArea = new Phaser.Geom.Circle(0, 0, 25);
-        container.setInteractive(hitArea, Phaser.Geom.Circle.Contains);
-        container.on('pointerdown', () => {
-            if (this.onTrooperClick) {
-                this.onTrooperClick(trooper.id);
-            }
-        });
-        
-        // Hover effect
-        container.on('pointerover', () => {
-             this.input.setDefaultCursor('pointer');
-             (container.list[0] as Phaser.GameObjects.Arc).setStrokeStyle(2, 0xffff00);
-        });
-        container.on('pointerout', () => {
-             this.input.setDefaultCursor('default');
-             (container.list[0] as Phaser.GameObjects.Arc).setStrokeStyle(0);
-        });
-    }
-
-    pause() {
-        if (this.isPaused) return;
-        this.isPaused = true;
-        this.tweens.pauseAll();
-        
-        // VISUALS: Grayscale
-        if (this.cameras.main.postFX) {
-            if (!this.colorMatrix) {
-                this.colorMatrix = this.cameras.main.postFX.addColorMatrix();
-            }
-            this.colorMatrix.grayscale(1.0);
-        }
-
-        // VISUALS: Borders
-        if (this.borderTop && this.borderBottom) {
-            // Kill existing tweens to prevent conflict (double click)
-            this.tweens.killTweensOf([this.borderTop, this.borderBottom]);
-
-            // const height = this.scale.height; // Not used for logic coords
-            this.tweens.add({
-                targets: this.borderTop,
-                y: 100, 
-                duration: 500,
-                ease: 'Power2'
-            });
-            this.tweens.add({
-                targets: this.borderBottom,
-                y: 500, // Logical Y
-                duration: 500,
-                ease: 'Power2'
-            });
-        }
-    }
-
-    resume() {
-        if (!this.isPaused) return;
-        this.isPaused = false;
-        this.tweens.resumeAll();
-
-        // Remove Grayscale
-        if (this.colorMatrix) {
-            this.colorMatrix.grayscale(0);
-        }
-
-        // Remove Borders
-        if (this.borderTop && this.borderBottom) {
-            // Kill existing tweens to prevent conflict
-            this.tweens.killTweensOf([this.borderTop, this.borderBottom]);
-
-            //  const height = this.scale.height;
-             this.tweens.add({
-                targets: this.borderTop,
-                y: 0,
-                duration: 300,
-                ease: 'Power2'
-            });
-            this.tweens.add({
-                targets: this.borderBottom,
-                y: 600, // Logical Y
-                duration: 300,
-                ease: 'Power2'
-            });
-        }
-        
-        // Notify Parent (React) to close inspector if needed
-        if (this.onResume) {
-            this.onResume();
-        }
-    }
-
-    updateHealth(target: Phaser.GameObjects.Container, damage: number) {
-        const currentHp = Math.max(0, target.getData('currentHp') - damage);
-        const maxHp = target.getData('maxHp');
-        target.setData('currentHp', currentHp);
-
-        const hpBar = target.getData('hpBar') as Phaser.GameObjects.Rectangle;
-        const percentage = currentHp / maxHp;
-        
-        // Update bar width
-        hpBar.width = 40 * percentage;
-        
-        // Color change
-        if (percentage < 0.3) hpBar.fillColor = 0xff0000;
-        else if (percentage < 0.6) hpBar.fillColor = 0xffff00;
-
-        // Death check
-        if (currentHp <= 0) {
-            // Immediate Visual Feedback
-            target.setAlpha(0.7);
-            const sprite = target.list.find(c => c instanceof Phaser.GameObjects.Sprite || c instanceof Phaser.GameObjects.Shape) as Phaser.GameObjects.Shape;
-            if (sprite) sprite.setFillStyle(0x444444); // Darken
-            
-            // Add Skull immediately
-            if (!target.getByName('deathSkull')) {
-                const skull = this.add.text(0, -50, '💀', { fontSize: '24px' }).setOrigin(0.5);
-                skull.setName('deathSkull');
-                target.add(skull);
-            }
-
-            this.tweens.add({
-                targets: target,
-                alpha: 0,
-                y: target.y + 20,
-                angle: 90,
-                duration: 500,
-                delay: 200,
-                onComplete: () => {
-                    target.destroy();
-                }
-            });
         } else {
-            // Shake effect
-            this.tweens.add({
-                targets: target,
-                x: target.x + (Math.random() > 0.5 ? 5 : -5),
-                duration: 50,
-                yoyo: true,
-                repeat: 3
-            });
+            onComplete();
         }
     }
 
-    updateVehicleHealth(target: Phaser.GameObjects.Container, damage: number) {
-        const currentHp = Math.max(0, target.getData('vehicleHp') - damage);
-        const maxHp = target.getData('vehicleMaxHp');
-        target.setData('vehicleHp', currentHp);
+    private animateDeath(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
+        this.showFloatingText(actor.x, actor.y - 50, "DEAD", '#666');
+        actor.setData('hp', 0);
+        this.tweens.add({
+            targets: actor,
+            alpha: 0.5,
+            angle: 90,
+            y: actor.y + 20,
+            duration: 500 / this.speedMultiplier,
+            onComplete: () => {
+                 onComplete();
+            }
+        });
+    }
 
-        const hpBar = target.getData('vehicleHpBar') as Phaser.GameObjects.Rectangle;
-        if (hpBar) {
-            const percentage = currentHp / maxHp;
-            hpBar.width = 40 * percentage;
-            
-            // Destruction Visuals
-            if (currentHp <= 0) {
-                // Hide vehicle parts?
-                const chassis = target.getByName('vehicleChassis');
-                if (chassis) {
-                     this.tweens.add({
-                        targets: chassis,
-                        alpha: 0,
-                        scale: 1.5,
-                        duration: 300,
-                        onComplete: () => chassis.destroy()
-                    });
-                     // Create explosion visual? Handled by 'vehicle_destroy' log usually, but sync here helps
+    private animateSabotage(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
+        if (log.targetId && log.data?.weaponId) {
+            const target = this.troopers.get(log.targetId);
+            if (target) {
+                this.showFloatingText(target.x, target.y - 60, "SABOTAGED!", '#ff0000');
+                const list = target.getData('sabotagedWeapons') || [];
+                if (!list.includes(log.data.weaponId)) {
+                    target.setData('sabotagedWeapons', [...list, log.data.weaponId]);
                 }
-                const turrets = target.list.filter(c => c.name && (c.name.includes('vehicle') || c.name.includes('turret')));
-                turrets.forEach(t => t.destroy()); // Cleanup parts
             }
         }
+        
+        // Saboteur visual cue
+        this.showFloatingText(actor.x, actor.y - 40, "SABOTAGE", '#ffff00');
+        this.tweens.add({
+            targets: actor,
+            y: actor.y - 10,
+            yoyo: true,
+            duration: 200 / this.speedMultiplier,
+            onComplete
+        });
     }
 
-    showFloatingText(x: number, y: number, message: string, color: string) {
-        const text = this.add.text(x, y, message, {
-            fontSize: '20px',
-            fontStyle: 'bold',
-            color: color,
-            stroke: '#000',
-            strokeThickness: 3
+    private showFloatingText(x: number, y: number, text: string, color: string) {
+        const t = this.add.text(x, y, text, { 
+            fontSize: '16px', color: color, stroke: '#000', strokeThickness: 3, fontStyle: 'bold' 
         }).setOrigin(0.5);
-
         this.tweens.add({
-            targets: text,
-            y: y - 40,
+            targets: t,
+            y: y - 30,
             alpha: 0,
             duration: 1000,
-            onComplete: () => text.destroy()
+            onComplete: () => t.destroy()
         });
-    }
-
-    public getTrooperData(id: string): any {
-        const container = this.troopers.get(id);
-        if (!container) return null;
-        
-        // Reconstruct ammo object for inspector
-        const ammo: Record<string, number> = {};
-        const trooperDef = this.allTroopersMap.get(id);
-        if (trooperDef) {
-            trooperDef.skills.forEach(s => {
-                const val = container.getData(`ammo_${s.id}`);
-                if (val !== undefined) ammo[s.id] = val;
-            });
-        }
-
-        return {
-            hp: container.getData('currentHp'),
-            maxHp: container.getData('maxHp'),
-            ammo: ammo,
-            currentWeaponId: container.getData('currentWeaponId') || trooperDef?.currentWeaponId,
-            jammedWeapons: container.getData('jammedWeapons') || trooperDef?.jammedWeapons || []
-        };
     }
 }

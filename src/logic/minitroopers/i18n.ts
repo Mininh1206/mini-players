@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 type Language = 'en' | 'es';
 
@@ -818,17 +818,17 @@ export const useTranslation = () => {
         }
     }, []);
 
-    const t = (key: TranslationKey | (string & {})) => {
+    const t = useCallback((key: TranslationKey | (string & {})) => {
         // Cast to any to avoid complex type inference issues with the large translation object
         return (translations[lang] as any)[key] || key;
-    };
+    }, [lang]);
 
-    const changeLanguage = (newLang: Language) => {
+    const changeLanguage = useCallback((newLang: Language) => {
         const url = new URL(window.location.href);
         url.searchParams.set('lang', newLang);
         window.history.pushState({}, '', url.toString());
         setLang(newLang);
-    };
+    }, []);
 
     return { t, lang, changeLanguage };
 };

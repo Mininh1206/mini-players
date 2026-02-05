@@ -83,9 +83,8 @@ export const generateRandomTrooper = (targetLevel: number = 1): Trooper => {
         }
     });
 
-    // Set first weapon as currentWeaponId
-    const firstWeapon = skills.find(s => (s as any).capacity !== undefined && (s as any).damage !== undefined);
-    const currentWeaponId = firstWeapon?.id;
+    // NOTE: Don't set currentWeaponId here - troopers deploy unarmed
+    // and equip their weapon as first combat action
 
     const data: TrooperData = {
         id: uuidv4(),
@@ -98,7 +97,7 @@ export const generateRandomTrooper = (targetLevel: number = 1): Trooper => {
         level: currentLevel,
         cooldown: 0,
         ammo,
-        currentWeaponId,
+        currentWeaponId: undefined, // Deploy unarmed
         disarmed: [],
         wounds: { head: false, chest: false, leftArm: false, rightArm: false, leftLeg: false, rightLeg: false },
         tactics: {
@@ -196,9 +195,8 @@ export const generateSpecificTrooper = (trooperClass: string, level: number): Tr
         }
     });
 
-    // Set first weapon as currentWeaponId
-    const firstWeapon = skills.find(s => (s as any).capacity !== undefined && (s as any).damage !== undefined);
-    const currentWeaponId = firstWeapon?.id;
+    // NOTE: Don't set currentWeaponId here - troopers deploy unarmed
+    // and equip their weapon as first combat action
 
     const data: TrooperData = {
         id: uuidv4(),
@@ -211,7 +209,7 @@ export const generateSpecificTrooper = (trooperClass: string, level: number): Tr
         level,
         cooldown: 0,
         ammo,
-        currentWeaponId,
+        currentWeaponId: undefined, // Deploy unarmed
         disarmed: [],
         wounds: { head: false, chest: false, leftArm: false, rightArm: false, leftLeg: false, rightLeg: false },
         tactics: {

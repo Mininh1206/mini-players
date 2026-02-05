@@ -64,3 +64,20 @@ export const hasPenetration = (skill: Skill | any): boolean => {
     const def = SKILLS.find(s => s.id === skill.id);
     return (def as any)?.penetration > 0;
 };
+
+/**
+ * Merge original trooper definition with live battle data
+ * @param original Original trooper definition (TrooperData)
+ * @param liveData Partial data from BattleScene (hp, ammo, etc.)
+ */
+export const mergeTrooperData = (original: any, liveData: any): any => {
+    if (!liveData) return original;
+    return {
+        ...original,
+        attributes: { ...original.attributes, hp: liveData.hp ?? original.attributes.hp, maxHp: liveData.maxHp ?? original.attributes.maxHp },
+        ammo: liveData.ammo ?? original.ammo,
+        currentWeaponId: liveData.currentWeaponId ?? original.currentWeaponId,
+        jammedWeapons: liveData.jammedWeapons ?? original.jammedWeapons,
+        sabotagedWeapons: liveData.sabotagedWeapons ?? original.sabotagedWeapons
+    };
+};

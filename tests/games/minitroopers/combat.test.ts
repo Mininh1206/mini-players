@@ -18,28 +18,30 @@ describe('Combat Logic', () => {
         const sniperData: TrooperData = {
             id: 'sniper-1', name: 'Sniper', team: 'A', level: 1, class: 'Sniper',
             skills: [],
-            attributes: { hp: 10, maxHp: 10, speed: 10, initiative: 100, aim: 100, dodge: 0, armor: 0, critChance: 5, damage: 0, aggro: 0, range: 0, recoveryMod: 0, reloadBonus: 0, deploymentLimitBonus: 0 },
-            position: { x: 0, y: 0 }, 
+            attributes: { hp: 50, maxHp: 50, speed: 10, initiative: 100, aim: 100, dodge: 0, armor: 0, critChance: 5, damage: 0, aggro: 0, range: 0, recoveryMod: 0, reloadBonus: 0, deploymentLimitBonus: 0 },
+            position: { x: 700, y: 0 }, // Start at optimal range (700px from target)
             isDead: false,
             disarmed: []
         };
         const sniper = new Sniper(sniperData);
         
-        // Add real weapon
-        const sniperRifle = new SniperRifle('sniper_rifle', 'Sniper Rifle', 'Long range.', '🎯', 10, 1, 100, 15, 150, 100, 1, 2, 0, 10, 2);
+        // Add real weapon with realistic values (range 10 = 1000px, rangeMin 2 = 200px)
+        const sniperRifle = new SniperRifle('sniper_rifle', 'Sniper Rifle', 'Long range.', '🎯', 10, 1, 10, 15, 150, 100, 5, 2, 0, 10, 10);
         sniper.skills = [sniperRifle];
         sniper.currentWeaponId = 'sniper_rifle';
-        sniper.ammo = { 'sniper_rifle': 1 };
+        sniper.ammo = { 'sniper_rifle': 5 };
+        sniper.recalculateStats(); // Inject Fists
 
         const targetData: TrooperData = {
             id: 'target-1', name: 'Target', team: 'B', level: 1, class: 'Soldier',
             skills: [],
-            attributes: { hp: 10, maxHp: 10, speed: 10, initiative: 50, aim: 10, dodge: 0, armor: 0, critChance: 0, damage: 0, aggro: 0, range: 0, recoveryMod: 0, reloadBonus: 0, deploymentLimitBonus: 0 },
-            position: { x: 400, y: 0 }, // Dist 400 > 200 (rangeMin 2*100)
+            attributes: { hp: 5, maxHp: 5, speed: 10, initiative: 50, aim: 10, dodge: 0, armor: 0, critChance: 0, damage: 0, aggro: 0, range: 0, recoveryMod: 0, reloadBonus: 0, deploymentLimitBonus: 0 },
+            position: { x: 0, y: 0 }, // Target at origin
             isDead: false,
             disarmed: []
         };
         const target = new Soldier(targetData);
+        target.recalculateStats(); // Inject Fists for target too
 
         const result = simulateBattle([sniper], [target]);
         

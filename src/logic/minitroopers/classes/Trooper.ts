@@ -5,8 +5,25 @@ import type { BattleContext } from '../systems/SkillSystem';
 import { skillManager } from '../systems/SkillSystem';
 import { getDistance } from '../utils';
 import { SKILLS as ALL_SKILLS_IDS } from '../combat'; 
-import { Weapon, Grenade } from './Skill';
+import { Weapon, Grenade, SniperRifle, Launcher, Shotgun, AssaultRifle, MachineGun, Handgun, Melee } from './Skill';
 import { SKILLS as ALL_SKILLS_DEFS } from '../skills';
+
+// Helper to determine optimal distance (in pixels)
+// NOTE: weapon.range is already in grid units where 1 unit ~ 100px
+const getOptimalRetreatDistance = (weapon: Weapon): number => {
+    const maxRange = (weapon.range || 1) * 100; // Convert to pixels
+    const minRange = (weapon.rangeMin || 0) * 100; // Convert to pixels
+    
+    if (weapon instanceof SniperRifle) {
+        // Sniper optimal: Stay at 70% of max range, but definitely above minRange
+        return Math.max(minRange + 100, maxRange * 0.7);
+    }
+    if (weapon instanceof Launcher) return minRange + 150; // Outside blast + safety
+    if (weapon instanceof Shotgun) return minRange + 120; // Safe from melee + some space
+    if (weapon instanceof AssaultRifle || weapon instanceof MachineGun) return maxRange * 0.5; // Mid range
+    if (weapon instanceof Handgun) return maxRange * 0.4;
+    return 0; // Melee or unknown
+};
 
 // Base Class
 export abstract class Trooper implements TrooperData {
@@ -111,23 +128,29 @@ export abstract class Trooper implements TrooperData {
              return def instanceof Weapon && (def as any).range === 1; // Melee check
         });
 
-        if (!hasMelee) {
-             const fists = ALL_SKILLS_DEFS.find((s: { id: string; }) => s.id === 'fists');
-             if (fists && !this.skills.some(s => s.id === 'fists')) {
-                 this.skills.push(fists);
-             }
-        }
 
-        // Set currentWeaponId if not already set but weapons exist
-        if (!this.currentWeaponId) {
-            const firstWeapon = this.skills.find(s => {
-                const def = ALL_SKILLS_DEFS.find((d: { id: any; }) => d.id === s.id);
-                return def instanceof Weapon;
-            });
-            if (firstWeapon) {
-                this.currentWeaponId = firstWeapon.id;
+
+        // Initialize Ammo & Reserves
+        this.skills.forEach(s => {
+            const def = ALL_SKILLS_DEFS.find((d: { id: any; }) => d.id === s.id);
+            if (def instanceof Weapon) {
+                const w = def as Weapon;
+                // Base Ammo
+                if (!this.ammo) this.ammo = {};
+                if (this.ammo[w.id] === undefined) {
+                    this.ammo[w.id] = w.capacity;
+                }
+                
+                // Base Reserves (Default 3 clips)
+                if (!this.reserves) this.reserves = {};
+                // Only set if not already set (preserve custom/saved state)
+                if (this.reserves[w.id] === undefined) {
+                    this.reserves[w.id] = w.capacity * 3;
+                }
             }
-        }
+        });
+        // NOTE: Don't auto-equip weapon here - let troopers deploy unarmed
+        // and equip their weapon as first combat action (like original game)
     }
 
     public getActiveWeaponStatus(weaponId?: string): 'ready' | 'jammed' | 'no_ammo' {
@@ -208,20 +231,15 @@ export abstract class Trooper implements TrooperData {
 
         const isMainWeapon = (s: any): s is Weapon => {
             if (s instanceof Weapon) return true;
+            if (s && typeof s === 'object' && s.constructor?.name === 'Weapon') return true;
+            // Also check for quacking like a weapon (has damage, range, aim)
+            if (s && typeof s.damage === 'number' && typeof s.range === 'number' && typeof s.aim === 'number') return true;
+            
             const def = ALL_SKILLS_DEFS.find((d: { id: any; }) => d.id === s.id);
             return def instanceof Weapon;
         };
         const isUsableMainWeapon = (s: any) => isMainWeapon(s) && isUsable(s);
 
-
-        // --- Burst Fire Logic: Handled by Context usually, ensuring no double-dip ---
-        // If context handles it (before calling playTurn), we shouldn't be here with burstState unless
-        // it's a new state or logic requires it. 
-        // For standard simulation, combat loop handles burst continuation.
-        // We will remove this block to prevent potential double-execution if combat loop calls playTurn blindly.
-        if (this.burstState) {
-             return false; // Yield turn if burst is managed externally
-        }
 
         // --- Targeting ---
         const enemies = allTroopers.filter(t => t.team !== this.team && !t.isDead);
@@ -278,6 +296,30 @@ export abstract class Trooper implements TrooperData {
             // Favor Sniper at long range
             if (dist > 500 && wRange > 600) score += 20;
 
+            // SPY AI: Heavily penalize Fists/Melee if we have ranged options and are decent distance
+            if (this.class === 'Spy') {
+                const isMelee = (w as any).range <= 1;
+                if (!isMelee) score += 50; // Bias towards Ranged
+                else if (availableWeapons.some(o => (o as any).range > 1 && isUsable(o))) {
+                     score -= 50; // Bias against fists if we have gun
+                }
+            }
+
+            // AMMO LOGIC
+            const ammo = this.ammo?.[w.id] ?? 0;
+            const reserves = this.reserves?.[w.id] ?? 0;
+            const isUnlimited = (w as any).isUnlimited;
+
+            if (!isUnlimited) {
+                if (ammo <= 0) {
+                    if (reserves <= 0) {
+                        return 0.1; // Effectively useless, but keep >0 to prevent weird fallback bugs? No, 0.1 is fine.
+                    } else {
+                        score *= 0.8; // Penalize for reload time requirement
+                    }
+                }
+            }
+
             return score;
         };
 
@@ -298,10 +340,17 @@ export abstract class Trooper implements TrooperData {
             if (isSabotaged || isJammed) {
                 shouldSwitch = true;
                 switchReason = isSabotaged ? 'sabotaged' : 'jammed';
-            } else if (!isUnlimited && ammo <= 0 && availableWeapons.some(w => (this.ammo?.[w.id] ?? 0) > 0)) {
-                // Only switch for ammo if we have another option with ammo
-                shouldSwitch = true;
-                switchReason = 'no_ammo';
+            } else if (!isUnlimited && ammo <= 0 && availableWeapons.some(w => (this.ammo?.[w.id] ?? 0) > 0 || (w as any).isUnlimited)) {
+                // Determine if we should switch or reload
+                const reserves = this.reserves?.[currentWeapon.id] ?? 0;
+                
+                // Switch if NO reserves, OR if we have another weapon and reloading is not an option (e.g. strict melee logic?)
+                // Default: If we have reserves, prefer Reload (handled later) UNLESS we are in melee range and current is sniper?
+                // But generally, don't force switch if we can reload.
+                if (reserves <= 0) {
+                    shouldSwitch = true;
+                    switchReason = 'no_ammo';
+                }
             }
         } else {
              shouldSwitch = true; // No weapon equipped
@@ -310,21 +359,83 @@ export abstract class Trooper implements TrooperData {
 
         // Check 2: Optimization (Better weapon for range?)
         let bestWeapon = currentWeapon;
-        if (!shouldSwitch && currentWeapon && availableWeapons.length > 1) {
-             const currentScore = getWeaponScore(currentWeapon, dist);
+        if (!shouldSwitch && currentWeapon) {
+             const optimalDist = getOptimalRetreatDistance(currentWeapon);
+             const canRetreat = optimalDist > 0 && dist < optimalDist && (this.attributes.speed || 0) > 0;
              
-             // Find best alternative
-             const bestAlt = availableWeapons.reduce((prev, curr) => {
-                 return getWeaponScore(curr, dist) > getWeaponScore(prev, dist) ? curr : prev;
-             }, currentWeapon);
+             if (canRetreat) {
+                 // Calculate urgency
+                 const urgency = 1 - (dist / optimalDist); // Closer = Higher urgency (0 to 1)
+                 const retreatScore = 50 + (urgency * 100); // Base 50 + up to 100 bonus
+                 
+                 // Compare with current weapon score
+                 // If weapon is useless (rangeMin violation), its score is low.
+                 // If weapon is good but we want to be safer...
+                 
+                 // Compare with Switch Score (if applicable)
+                 // bestAlt logic already computed bestAlt.
+                 
+                 const switchScore = shouldSwitch ? 200 : 0; // Force switch is high priority (200?).
+                 // If retreat score is higher than switch score?
+                 // Or rather: if We verify Switch is better, we Switch. 
+                 // If NOT switching, we check Retreat.
+                 
+                 // BUT: Sometimes Retreat is BETTER than Switch (e.g. Sniper at 50px).
+                 // Switch to Fists (Score 10?) vs Retreat to 800px (Score 150?).
+                 
+                 // Let's refine:
+                 // If we have a secondary, we might switch.
+                 // If secondary is Fists, Retreat usually better unless cornered.
+                 
+                 if (!shouldSwitch || (retreatScore > 100 && availableWeapons.length <= 1)) {
+                     // If we are NOT forced to switch (empty ammo), OR if we are forced but Retreat is critical and we have no good backup.
+                     // Actually, if Out of Ammo (shouldSwitch=true), we MUST switch or Reload. Retreating won't help ammo.
+                     // So Retreat only if has ammo?
+                     // Or Retreat to reload safely?
+                     
+                     // Let's keep it simple:
+                     // Priority: 
+                     // 1. Force Switch (No Ammo) -> UNLESS Reload possible (already handled).
+                     // 2. Retreat (Safety) -> If weapon loaded but too close.
+                     // 3. Switch (Optimization) -> If another weapon is better at this range.
+                     
+                     // If current weapon has ammo:
+                     if ((this.ammo?.[currentWeapon.id] || 0) > 0) {
+                         // Check Retreat Score vs Switch Optimization
+                         let bestAltScore = 0;
+                         if (availableWeapons.length > 1) {
+                             const bestAlt = availableWeapons.reduce((prev, curr) => getWeaponScore(curr, dist) > getWeaponScore(prev, dist) ? curr : prev, currentWeapon);
+                             bestAltScore = getWeaponScore(bestAlt, dist);
+                         }
+                         
+                         const curScore = getWeaponScore(currentWeapon, dist);
+                         
+                         // If Retreat is high value (e.g. Sniper in face), we prefer it provided we can move.
+                         if (retreatScore > bestAltScore && retreatScore > curScore) {
+                             this.performRetreat(target, optimalDist, log, time);
+                             return true; // End turn
+                         }
+                     }
+                 }
+             }
 
-             const bestScore = getWeaponScore(bestAlt, dist);
-             
-             // Threshold for switching (don't flicker)
-             if (bestScore > currentScore * 1.5) {
-                 shouldSwitch = true;
-                 switchReason = 'range_optimization';
-                 bestWeapon = bestAlt;
+             // Switch Logic (Existing)
+             if (!shouldSwitch && availableWeapons.length > 1) {
+                  const currentScore = getWeaponScore(currentWeapon, dist);
+                  
+                  // Find best alternative
+                  const bestAlt = availableWeapons.reduce((prev, curr) => {
+                      return getWeaponScore(curr, dist) > getWeaponScore(prev, dist) ? curr : prev;
+                  }, currentWeapon);
+    
+                  const bestScore = getWeaponScore(bestAlt, dist);
+                  
+                  // Threshold for switching (don't flicker)
+                  if (bestScore > currentScore * 1.5) {
+                      shouldSwitch = true;
+                      switchReason = 'range_optimization';
+                      bestWeapon = bestAlt;
+                  }
              }
         }
 
@@ -349,6 +460,7 @@ export abstract class Trooper implements TrooperData {
                      currentWeapon = newWeapon;
                      
                      let msg = `${this.name} switches to ${newWeapon.name}.`;
+                     if (switchReason === 'none_equipped') msg = `${this.name} raises ${newWeapon.name}!`;
                      if (switchReason === 'sabotaged') msg = `${this.name} discards sabotaged weapon!`;
                      if (switchReason === 'no_ammo') msg = `${this.name} switches (Out of Ammo).`;
                      if (switchReason === 'range_optimization') msg = `${this.name} switches for better range.`;
@@ -362,20 +474,13 @@ export abstract class Trooper implements TrooperData {
                      actionTaken = true;
                  }
             } else {
-                 // No weapons available! (Fists fallback handled in recalc logic, should have Fists)
-                 const fists = this.skills.find(s => s.id === 'fists');
-                 if (fists && this.currentWeaponId !== 'fists') {
-                     this.currentWeaponId = fists.id;
-                     currentWeapon = fists as Weapon;
-                     log.push({ time, actorId: this.id, action: 'switch_weapon', actorName: this.name, message: `${this.name} uses Fists!` });
-                     this.actionTimer! += 100;
-                     actionTaken = true;
-                 }
+                 // No weapons available - will use unarmed melee below
+                 this.currentWeaponId = undefined;
             }
         }
 
         // Ensure currentWeapon is up to date for attack logic
-        let equippedWeapon = this.skills.find(s => s.id === this.currentWeaponId) as Weapon | undefined;
+        let equippedWeapon = (this.skills.find(s => s.id === this.currentWeaponId) || ALL_SKILLS_DEFS.find((d: { id: any; }) => d.id === this.currentWeaponId)) as Weapon | undefined;
 
         // Start AI Logic / Attack Execution (Modified from original to reduce duplication)
         if (!actionTaken) {
@@ -403,6 +508,79 @@ export abstract class Trooper implements TrooperData {
                 if (lofBlocked) {
                      this.performRelocation(target as Trooper, log, time);
                      actionTaken = true;
+                } else if ((target as Trooper).isDead) {
+                      // Target died while we were aiming/moving in this same tick? 
+                      // Or just a safety check. If dead, we should re-target next turn or try to find another now?
+                      // For simplicity, just yield turn (timer not reset usually? Or reset slightly?)
+                      // Actually, if we return false, we might loop again?
+                      // Let's just do nothing and return false to let AI pick new target next tick?
+                      // But actionTimer was consumed! We lose the turn?
+                      // Better: Find new target immediately?
+                      // The AI logic (targeting) happened at start of playTurn.
+                      // If 'target' is dead now, it means it was dead at start of playTurn?
+                      // No, playTurn line 227 filters !isDead.
+                      // So target MUST be alive at line 227.
+                      // Is it possible it dies between 227 and 401?
+                      // No, playTurn is synchronous.
+                      // UNLESS: The 'checkLineOfFire' logic somehow mutated it? No.
+                      
+                      // WAIT. The user says "if they killed an enemy, but an ally was aiming at him".
+                      // This implies BURST logic overlap or previous-tick targeting persistence?
+                      // Ah, `Trooper.ts` playTurn is atomic per tick.
+                      
+                      // BUT `combat.ts` loop:
+                      // for (const actor of allTroopers) {
+                      //    playTurn()
+                      // }
+                      
+                      // If Actor A kills Target T.
+                      // Then Actor B (later in loop) playTurn() calls targeting.
+                      // Targeting filters !isDead. So Actor B see T as dead.
+                      // So Actor B should NOT target T.
+                      
+                      // CASE: Actor B has `burstState` targeting T.
+                      // `combat.ts` handles burst state.
+                      // Let's look at `combat.ts` burst handling (lines 200-230).
+                      // It checks `if (target && !target.isDead ...)`
+                      // So Burst SHOULD stop if target is dead.
+                      
+                      // Is there any other state?
+                      // Maybe `pendingChoices`? No.
+                      
+                      // Let's double check `combat.ts` logic again.
+                      // Line 208: `if (target && !target.isDead && ...)`
+                      // If target IS DEAD, it goes to `else` (Line 224).
+                      // Line 224: `Burst Interrupted`. Deletes burstState.
+                      // AND `continue`.
+                      // So it skips the rest of the turn. Correct.
+                      
+                      // SO why does user say they shoot dead?
+                      // Maybe the "Death" status isn't set immediately?
+                      // `applyDamage` sets `isDead = true` if hp <= 0.
+                      
+                      // Maybe the Battle Loop victory check is the issue?
+                      // User: "the battle doesn't end until that trooper finishes shooting"
+                      // This implies the LOOP continues even if one team is dead.
+                      
+                      // `combat.ts` Line 170: `if (allTroopers.length === 0) break;` (Safety)
+                      // The while loop condition: `(deployedA.length > 0 ... && deployedB.length > 0 ...)`
+                      // This is checked at START of tick (Line 161).
+                      // Inside the `for (const actor of allTroopers)` loop:
+                      // It iterates ALL actors. Even if Team B is wiped out by Actor A (index 0),
+                      // Actor C (index 5) will still act in this tick because the loop finishes!
+                      
+                      // FIX: Add victory check INSIDE the loop!
+                      
+                      // AND: Check target death in `playTurn` just in case targeting logic picked a dying unit (unlikely if atomic).
+                      // But purely for safety, I will add the check here.
+                      if ((target as Trooper).isDead) { // Should not happen if targeting filtered correctly
+                           // Force retarget next time
+                           actionTaken = false; 
+                      } else {
+                          const bursts = (equippedWeapon as any).bursts || 1;
+                          if (resolveWeaponShot) resolveWeaponShot(this, target as Trooper, equippedWeapon, context);
+                          // ...
+                     }
                 } else {
                       const bursts = (equippedWeapon as any).bursts || 1;
                       if (resolveWeaponShot) resolveWeaponShot(this, target as Trooper, equippedWeapon, context);
@@ -428,23 +606,39 @@ export abstract class Trooper implements TrooperData {
         }
 
         // Reload logic
+        // Reload logic (Single Bullet)
         if (!actionTaken && equippedWeapon && isUsableMainWeapon(equippedWeapon)) {
                const currentAmmo = this.ammo?.[equippedWeapon.id] || 0;
                const capacity = (equippedWeapon as any).capacity || 1;
                const reserves = this.reserves?.[equippedWeapon.id] || 0;
                
-               if (currentAmmo < capacity && reserves > 0 && (currentAmmo <= 0 || dist > ((equippedWeapon as any).range || 1) * 100)) {
+               // Reload if not full and has reserves.
+               // We rely on the AI Priorities (above) to "Interrupt" this loop if a better action (Attack) is available.
+               // e.g. If enemy is in range and ammo > 0, Attack logic (lines 409+) would typically fire first?
+               // Wait, Attack logic runs IF `usable && dist <= range && ammo > 0`.
+               // So if we have 1 bullet, Attack fires.
+               // If we have 0 bullets, Attack skips. Reload fires.
+               // -> Good: Reloads when necessary.
+               // -> But user wants to TOP UP ("recargase de 1 en 1").
+               // If I have 1 bullet and enemy is far, I should Reload.
+               // Attack logic requires `dist <= range`.
+               // So if `dist > range` (Enemy Far), Attack skips. Reload fires. -> Good (Top Up).
+               // If `dist <= range` (Enemy Close) AND `ammo > 0`: Attack fires. -> Good (Interrupt).
+               
+               if (currentAmmo < capacity && reserves > 0) {
                    this.ammo![equippedWeapon.id] = currentAmmo + 1;
                    this.reserves![equippedWeapon.id] = reserves - 1;
-                   log.push({ time, actorId: this.id, actorName: this.name, action: 'reload', message: `${this.name} reloads.` });
-                   this.recoveryTime = 10;
+                   log.push({ time, actorId: this.id, actorName: this.name, action: 'reload', message: `${this.name} reloads (1).` });
+                   this.recoveryTime = 5; // Faster for single bullet
                    actionTaken = true;
                }
         }
         
-        // Melee
+        // Unarmed Melee (when no weapon equipped)
         if (!actionTaken && dist <= 50 && target && target.team !== this.team) {
-                const damage = 5 + (this.attributes.damage || 0);
+                // Use trooper's own damage attribute (1-3 base for unarmed)
+                const baseDamage = 1 + Math.floor(Math.random() * 3); // 1-3
+                const damage = baseDamage + (this.attributes.damage || 0);
                 // Log Attack
                 log.push({ time, actorId: this.id, actorName: this.name, action: 'attack', targetId: target!.id, damage, message: `${this.name} punches ${target!.name}!` });
                 // Apply Damage
@@ -470,39 +664,30 @@ export abstract class Trooper implements TrooperData {
 
 
 
-    private performPanicOrRetreat(target: Trooper, dist: number, log: any[], time: number, equippedWeapon?: Weapon) {
-        // Safety check: never attack allies
-        if (target.team === this.team) {
-            // Retreat instead of attacking ally
-            this.performMoveTowards(target, log, time); // Will move away due to retreat logic
-            return;
-        }
+    private performRetreat(target: Trooper, optimalDist: number, log: any[], time: number) {
+        // Calculate vector away from target
+        const angle = Math.atan2((this.position!.y) - (target.position!.y), (this.position!.x) - (target.position!.x));
+        const moveSpeed = (this.attributes.speed || 100) / 2; // Normal move speed (retreat is same speed?)
         
-        if (dist < 50) {
-            // Melee panic
-             const damage = 3;
-             target.attributes.hp -= 3;
-             if (target.attributes.hp <= 0) target.isDead = true;
-             log.push({ time, actorId: this.id, actorName: this.name, action: 'attack', damage: 3, targetId: target.id, message: `${this.name} punches ${target.name}!` });
-             this.recoveryTime = 10;
-        } else {
-             const escapeAngle = Math.atan2((this.position!.y) - (target.position!.y), (this.position!.x) - (target.position!.x)); // Away
-             const moveSpeed = (this.attributes.speed || 100) / 10; // Slow retreat?
-             let speedMod = 1.0;
-             if (equippedWeapon && equippedWeapon.encumberance) speedMod -= (equippedWeapon.encumberance / 100);
-             const finalSpeed = Math.max(1, moveSpeed * speedMod);
-
-             this.position!.x += Math.cos(escapeAngle) * finalSpeed;
-             this.position!.y += Math.sin(escapeAngle) * finalSpeed;
-             
-             // Clamp
-             this.position!.x = Math.max(0, Math.min(1000, this.position!.x));
-             this.position!.y = Math.max(0, Math.min(400, this.position!.y));
-             
-             this.isMoving = true;
-             log.push({ time, actorId: this.id, actorName: this.name, action: 'move', targetPosition: { ...this.position! }, message: `${this.name} retreats to safe distance.` });
-             this.recoveryTime = 10;
-        }
+        // Move towards safety
+        // We want to reach optimalDist. 
+        // dx, dy to add.
+        const moveX = Math.cos(angle) * moveSpeed;
+        const moveY = Math.sin(angle) * moveSpeed;
+        
+        this.position!.x = Math.max(0, Math.min(1000, this.position!.x + moveX));
+        this.position!.y = Math.max(0, Math.min(400, this.position!.y + moveY));
+        
+        this.isMoving = true;
+        log.push({ 
+            time, 
+            actorId: this.id, 
+            actorName: this.name, 
+            action: 'move', 
+            targetPosition: { ...this.position! }, 
+            message: `${this.name} falls back to better range!` 
+        });
+        this.recoveryTime = 10;
     }
 
     private performMoveTowards(target: Trooper, log: any[], time: number) {

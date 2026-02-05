@@ -12,6 +12,7 @@ export const SKILLS: Skill[] = [
     new Specialization('sniper', 'Sniper', 'Deadly precision at long range.', '🎯', 0, 0),
     new Specialization('commando', 'Commando', 'Versatile warrior for any situation.', '⚔️', 0, 0), // Not in doc, kept neutral
     new Specialization('spy', 'Spy', 'Infiltrates enemy lines. High initiative.', '🕵️', 0, 10),
+    new Specialization('munitions', 'Munitions', 'Doubles ammo and resupplies team.', '📦', 0, 0),
 
     // Vehicles (Level 7+)
     new Vehicle('motorcycle', 'Motorcycle', 'Fast transport. Uses 2 Deployment Points.', '🏍️', 7),
@@ -93,8 +94,6 @@ export const SKILLS: Skill[] = [
     // Weapons - Melee (Unlimited ammo - no reload needed)
     // Knife: Dam:2-4, Rng:1, Crit:10, Aim:120, Rec:40
     new Melee('knife', 'Knife', 'Close quarters combat.', '🔪', 2, 1, 1, 10, 120, 40, 0, 0, 4),
-    // Fists: Dam:1-3, Rng:1, Crit:5, Aim:100, Rec:20
-    new Melee('fists', 'Fists', 'Good old knuckle sandwich.', '👊', 1, 1, 1, 5, 100, 20, 0, 0, 3),
 
     // Ammunition
     new Equipment('explosive_shells', 'Explosive Shells', 'Bullets explode on impact.', '💥', 99),

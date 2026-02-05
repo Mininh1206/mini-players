@@ -97,10 +97,17 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
                 const isTeamA = (team === 'A');
                 const deployOnA = isSpy ? !isTeamA : isTeamA;
 
-                trooper.position = {
-                    x: deployOnA ? Math.floor(Math.random() * 200) : 800 + Math.floor(Math.random() * 200),
-                    y: 50 + Math.floor(Math.random() * 300) // 50-350 Y range
-                };
+                // Respect existing position if set (for tests/scenarios)
+                if (!trooper.position) {
+                    trooper.position = {
+                        x: deployOnA ? Math.floor(Math.random() * 200) : 800 + Math.floor(Math.random() * 200),
+                        y: 50 + Math.floor(Math.random() * 300) // 50-350 Y range
+                    };
+                    console.log(`[DEPLOY] ${trooper.name} (Team ${team}) randomized to ${trooper.position.x}, ${trooper.position.y}`);
+                } else {
+                    console.log(`[DEPLOY] ${trooper.name} (Team ${team}) kept existing position ${trooper.position.x}, ${trooper.position.y}`);
+                }
+                
                 trooper.recoveryTime = 0;
                 trooper.actionTimer = Math.floor(Math.random() * 500);
                 trooper.ammo = {};
@@ -124,7 +131,12 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
                     actorName: trooper.name,
                     action: 'deploy',
                     message: msg,
-                    targetPosition: { ...trooper.position } // Clone to avoid mutation by ref
+                    targetPosition: { ...trooper.position }, // Clone to avoid mutation by ref
+                    data: { 
+                        attributes: { ...trooper.attributes },
+                        maxHp: trooper.attributes.maxHp, // Explicitly separate for easy access
+                        hp: trooper.attributes.hp
+                    }
                 });
 
                 // Trigger onDeploy Skills (e.g. Spy, Vehicles)
@@ -232,7 +244,7 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
 
             // Action Timer Accumulation (Only if fully recovered)
             // Base speed 100. Initiative adds bonus.
-            const speed = (actor.attributes.speed || 100) + actor.attributes.initiative;
+            const speed = (actor.attributes.speed || 100) + (actor.attributes.initiative || 0);
             actor.actionTimer = (actor.actionTimer || 0) + speed;
 
             // Action Threshold
@@ -243,11 +255,19 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
                 const actionTaken = actor.playTurn(context);
 
                 if (actionTaken) {
-                    actor.actionTimer! -= 1000;
+                    // Timer was consumed by action logic or reset
                 }
 
                 // Skill Turn End Hooks
                 skillManager.executeOnTurnEnd(actor, context);
+            }
+            // Victory Check inside loop to prevent Overkill
+            const aliveA = context.deployedA.filter(t => !t.isDead).length + context.reserveA.length;
+            const aliveB = context.deployedB.filter(t => !t.isDead).length + context.reserveB.length;
+            
+            if (aliveA === 0 || aliveB === 0) {
+                 // Battle Over
+                 break; 
             }
         } // End of for loop
 
@@ -354,17 +374,7 @@ export const applyDamage = (target: Trooper, damage: number, context: BattleCont
         
         vehicle.hp -= dmg;
         
-        context.log.push({
-            time: context.time,
-            actorId: source ? source.id : 'environment',
-            actorName: source ? source.name : 'Env',
-            targetId: target.id,
-            targetName: target.name,
-            action: 'attack', // or vehicle_hit
-            isVehicleHit: true,
-            damage: dmg,
-            message: `${target.name}'s ${vehicle.name} takes ${dmg} damage! (${vehicle.hp}/${vehicle.maxHp})`
-        });
+        // Log removed here to prevent duplication with resolveWeaponShot. Caller must log attack.
 
         if (vehicle.hp <= 0) {
             // Ejection
@@ -438,13 +448,13 @@ export function resolveWeaponShot(actor: Trooper, target: Trooper, weapon: Weapo
         return;
     }
 
-    let dodge = target.attributes.dodge;
+    let dodge = target.attributes.dodge || 0;
     if (target.isMoving && target.skills.some(s => s.id === 'zigzag')) {
         dodge += 25; // Zigzag bonus
     }
 
     const finalHitChance = ((baseAim - aimPenalty) * (weaponAccuracy / 100)) - dodge;
-
+    
     // BALLISTICS SIMULATION
     let actualTarget = target;
     let obstruction: Trooper | null = null;
@@ -625,11 +635,21 @@ export function resolveWeaponShot(actor: Trooper, target: Trooper, weapon: Weapo
             }
             
             const finalDamage = Math.floor(damage * critMult * locMult);
+            
+            // Calculate ACTUAL damage for log (to match applyDamage reduction)
+            let actualDamage = finalDamage;
+            if (actualTarget.vehicle) {
+                 actualDamage = Math.max(1, finalDamage - (actualTarget.vehicle.armor || 0));
+            } else {
+                 actualDamage = Math.max(1, finalDamage - (actualTarget.attributes.armor || 0));
+            }
 
-            // Log Attack
-             log.push({
+            // Log Attack (Detailed)
+            log.push({
                 time, actorId: actor.id, actorName: actor.name, targetId: actualTarget.id, targetName: actualTarget.name,
-                action: 'attack', damage: finalDamage, isCrit, message: `${actor.name} hits ${actualTarget.name} for ${finalDamage}`,
+                action: 'attack', damage: actualDamage, isCrit, hitLocation, 
+                message: `${actor.name} hits ${actualTarget.name} in ${hitLocation} for ${actualDamage}${isCrit ? ' (CRIT!)' : ''}`,
+                isVehicleHit: !!actualTarget.vehicle,
                 data: { weaponId: weapon.id }
             });
 
@@ -650,7 +670,13 @@ export function resolveWeaponShot(actor: Trooper, target: Trooper, weapon: Weapo
                 
                 // Add Recovery
                 actualTarget.recoveryTime = (actualTarget.recoveryTime || 0) + 100;
-                log.push({ time, actorId: actor.id, actorName: actor.name, action: 'knockback', message: `${actualTarget.name} is knocked down!` });
+                log.push({ 
+                    time, actorId: actor.id, actorName: actor.name, 
+                    targetId: actualTarget.id, targetName: actualTarget.name,
+                    action: 'knockback', 
+                    message: `${actualTarget.name} is knocked down!`,
+                    targetPosition: { x: actualTarget.position!.x, y: actualTarget.position!.y }
+                });
             }
             
             // Grenade Effects (Single Target)
@@ -673,13 +699,6 @@ export function resolveWeaponShot(actor: Trooper, target: Trooper, weapon: Weapo
                          // Visualization
                      }
                 }
-
-                log.push({
-                    time, actorId: actor.id, actorName: actor.name, targetId: actualTarget.id, targetName: actualTarget.name,
-                    action: 'attack', damage: finalDamage, isCrit, hitLocation, 
-                    message: `${actor.name} hits ${actualTarget.name} in ${hitLocation} for ${finalDamage}${isCrit ? ' (CRIT!)' : ''}`,
-                    data: { weaponId: weapon.id }
-                });
 
                 // --- BULLET PENETRATION ---
                 const weaponPenetration = (weapon as any).penetration || 0;

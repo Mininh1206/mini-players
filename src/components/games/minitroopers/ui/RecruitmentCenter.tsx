@@ -2,6 +2,7 @@ import React from 'react';
 import type { Trooper } from '@/logic/minitroopers/types';
 import TrooperCard from './TrooperCard';
 import SkillTooltip from './SkillTooltip';
+import { GetSkillIcon } from './VectorAssets';
 
 interface RecruitmentCenterProps {
     candidates: Trooper[];
@@ -34,19 +35,19 @@ const RecruitmentCenter: React.FC<RecruitmentCenterProps> = ({ candidates, onRec
                     </span>
                 </div>
             </div>
-            
+
             {/* Candidates Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {candidates.map((trooper) => (
-                    <div 
-                        key={trooper.id} 
+                    <div
+                        key={trooper.id}
                         className="group relative flex flex-col bg-black/30 rounded-xl border border-white/5 overflow-hidden hover:border-blue-500/30 transition-all duration-300 hover:shadow-[0_0_30px_rgba(59,130,246,0.15)]"
                     >
                         {/* Card Header */}
                         <div className="p-4 bg-gradient-to-r from-blue-600/10 to-purple-600/10 border-b border-white/5">
-                            <TrooperCard trooper={trooper} isSelected={false} onClick={() => {}} t={t} />
+                            <TrooperCard trooper={trooper} isSelected={false} onClick={() => { }} t={t} />
                         </div>
-                        
+
                         {/* Skills Preview */}
                         <div className="p-4 flex-1">
                             <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-2">Loadout</div>
@@ -55,7 +56,9 @@ const RecruitmentCenter: React.FC<RecruitmentCenterProps> = ({ candidates, onRec
                                 {trooper.skills[0] && (
                                     <SkillTooltip skill={trooper.skills[0]} t={t}>
                                         <div className="flex-1 group/skill bg-slate-800/50 p-3 rounded-lg border border-slate-700/50 hover:border-red-500/50 transition-all cursor-help text-center">
-                                            <div className="text-3xl mb-1 group-hover/skill:scale-110 transition-transform">{trooper.skills[0]?.icon}</div>
+                                            <div className="mb-1 group-hover/skill:scale-110 transition-transform flex justify-center text-white">
+                                                {GetSkillIcon(trooper.skills[0].id, 32, "white")}
+                                            </div>
                                             <div className="text-[10px] text-gray-400 truncate">
                                                 {t(`skill_${trooper.skills[0]?.id}_name`) !== `skill_${trooper.skills[0]?.id}_name` ? t(`skill_${trooper.skills[0]?.id}_name`) : trooper.skills[0]?.name}
                                             </div>
@@ -67,7 +70,9 @@ const RecruitmentCenter: React.FC<RecruitmentCenterProps> = ({ candidates, onRec
                                 {trooper.skills[1] && (
                                     <SkillTooltip skill={trooper.skills[1]} t={t}>
                                         <div className="flex-1 group/skill bg-slate-800/50 p-3 rounded-lg border border-slate-700/50 hover:border-yellow-500/50 transition-all cursor-help text-center">
-                                            <div className="text-3xl mb-1 group-hover/skill:scale-110 transition-transform">{trooper.skills[1]?.icon}</div>
+                                            <div className="mb-1 group-hover/skill:scale-110 transition-transform flex justify-center text-white">
+                                                {GetSkillIcon(trooper.skills[1].id, 32, "white")}
+                                            </div>
                                             <div className="text-[10px] text-gray-400 truncate">
                                                 {t(`skill_${trooper.skills[1]?.id}_name`) !== `skill_${trooper.skills[1]?.id}_name` ? t(`skill_${trooper.skills[1]?.id}_name`) : trooper.skills[1]?.name}
                                             </div>
@@ -95,11 +100,10 @@ const RecruitmentCenter: React.FC<RecruitmentCenterProps> = ({ candidates, onRec
                         <button
                             onClick={() => onRecruit(trooper)}
                             disabled={!isAffordable}
-                            className={`w-full py-3 font-black text-sm transition-all duration-300 flex items-center justify-center gap-2 ${
-                                isAffordable 
-                                    ? 'bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-500 hover:to-emerald-400 text-white hover:shadow-[0_0_20px_rgba(34,197,94,0.4)]' 
-                                    : 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                            }`}
+                            className={`w-full py-3 font-black text-sm transition-all duration-300 flex items-center justify-center gap-2 ${isAffordable
+                                ? 'bg-gradient-to-r from-green-600 to-emerald-500 hover:from-green-500 hover:to-emerald-400 text-white hover:shadow-[0_0_20px_rgba(34,197,94,0.4)]'
+                                : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                                }`}
                         >
                             <span>➕</span>
                             <span>{t('recruit_trooper')}</span>

@@ -97,7 +97,7 @@ export interface BattleLogEntry {
     actorName: string;
     targetId?: string;
     targetName?: string;
-    action: 'attack' | 'heal' | 'wait' | 'move' | 'deploy' | 'switch_weapon' | 'reload' | 'use_equipment' | 'swap' | 'melee' | 'knockback' | 'vehicle_destroy' | 'eject' | 'jam_weapon';
+    action: 'attack' | 'heal' | 'wait' | 'move' | 'deploy' | 'switch_weapon' | 'reload' | 'use_equipment' | 'swap' | 'melee' | 'knockback' | 'vehicle_destroy' | 'eject' | 'jam_weapon' | 'sabotage';
     damage?: number;
     heal?: number;
     targetPosition?: { x: number; y: number };

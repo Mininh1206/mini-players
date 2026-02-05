@@ -3,6 +3,7 @@ import type { Trooper, Skill } from '@/logic/minitroopers/types';
 import { SKILLS } from '@/logic/minitroopers/skills';
 import { Weapon, Grenade } from '@/logic/minitroopers/classes/Skill';
 import SkillTooltip from './SkillTooltip';
+import { GetSkillIcon, GetTrooperClassIcon } from './VectorAssets';
 
 interface TrooperProfileProps {
     trooper: Trooper;
@@ -14,22 +15,6 @@ interface TrooperProfileProps {
     upgradeCostCalculator?: (level: number) => number;
     onRename?: (name: string) => void;
 }
-
-const getHelmetIcon = (trooperClass: string) => {
-    switch (trooperClass) {
-        case 'Doctor': return '⛑️';
-        case 'Pilot': return '✈️';
-        case 'Sniper': return '🔭';
-        case 'Soldier': return '🪖';
-        case 'Commando': return '🤺';
-        case 'Scout': return '👟';
-        case 'Spy': return '🕴️';
-        case 'Saboteur': return '💣';
-        case 'Comms Officer': return '📡';
-        case 'Rat': return '🐀';
-        default: return '🪖';
-    }
-};
 
 const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrade, t, onUpdateTactics, onSelectSkill, upgradeCostCalculator, onRename }) => {
     const defaultUpgradeCost = (trooper.level || 1) * 50;
@@ -63,7 +48,9 @@ const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrad
                                     onClick={() => onSelectSkill && onSelectSkill(skill)}
                                     className="group relative bg-black/40 backdrop-blur-sm p-5 rounded-xl border border-white/10 hover:border-yellow-500/50 hover:bg-black/60 transition-all duration-300 flex flex-col items-center gap-3 hover:scale-[1.02] hover:shadow-[0_0_30px_rgba(234,179,8,0.2)]"
                                 >
-                                    <div className="text-5xl group-hover:scale-110 transition-transform duration-300">{skill.icon}</div>
+                                    <div className="group-hover:scale-110 transition-transform duration-300 drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
+                                        {GetSkillIcon(skill.id, 48, "white")}
+                                    </div>
                                     <h3 className="text-lg font-bold text-white">{skill.name}</h3>
                                     <p className="text-xs text-gray-400 text-center line-clamp-2">{skill.description}</p>
                                 </button>
@@ -77,16 +64,18 @@ const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrad
 
     return (
         <div className="flex flex-col h-full rounded-2xl overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 border border-white/5 shadow-2xl">
-            
+
             {/* Header - Glass Effect */}
             <div className="relative p-4 bg-gradient-to-r from-blue-600/20 to-purple-600/20 border-b border-white/5">
                 <div className="absolute inset-0 backdrop-blur-sm" />
                 <div className="relative flex items-center gap-4">
-                    
+
                     {/* Avatar */}
                     <div className="relative shrink-0">
                         <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-slate-700 to-slate-900 border-2 border-blue-500/50 flex items-center justify-center shadow-[0_0_20px_rgba(59,130,246,0.3)]">
-                            <span className="text-5xl">{getHelmetIcon(trooper.class)}</span>
+                            <div className="drop-shadow-[0_5px_5px_rgba(0,0,0,0.5)]">
+                                {GetTrooperClassIcon(trooper.class, 48, "white")}
+                            </div>
                         </div>
                         <div className="absolute -bottom-1 -right-1 bg-gradient-to-r from-blue-600 to-blue-500 text-white px-2 py-0.5 rounded-lg text-xs font-black shadow-lg">
                             LV.{trooper.level || 1}
@@ -97,9 +86,9 @@ const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrad
                     <div className="flex-1 min-w-0">
                         {isEditingName ? (
                             <div className="flex items-center gap-2">
-                                <input 
-                                    type="text" 
-                                    value={tempName} 
+                                <input
+                                    type="text"
+                                    value={tempName}
                                     onChange={(e) => setTempName(e.target.value)}
                                     className="bg-black/50 border border-blue-500 rounded-lg px-3 py-1 text-xl font-black text-white outline-none w-full"
                                     autoFocus
@@ -108,7 +97,7 @@ const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrad
                                 />
                             </div>
                         ) : (
-                            <h2 
+                            <h2
                                 className="text-2xl font-black text-white truncate cursor-pointer hover:text-blue-400 transition-colors flex items-center gap-2"
                                 onClick={() => { setTempName(trooper.name); setIsEditingName(true); }}
                             >
@@ -121,7 +110,7 @@ const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrad
                                 {trooper.class}
                             </span>
                         )}
-                        
+
                         {/* HP Bar */}
                         <div className="mt-2">
                             <div className="flex justify-between text-[10px] text-gray-400 mb-0.5">
@@ -129,12 +118,11 @@ const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrad
                                 <span>{trooper.attributes.hp}/{trooper.attributes.maxHp}</span>
                             </div>
                             <div className="h-2 bg-black/50 rounded-full overflow-hidden">
-                                <div 
-                                    className={`h-full transition-all duration-500 rounded-full ${
-                                        hpPercent > 50 ? 'bg-gradient-to-r from-green-600 to-green-400' : 
-                                        hpPercent > 25 ? 'bg-gradient-to-r from-yellow-600 to-yellow-400' : 
-                                        'bg-gradient-to-r from-red-600 to-red-400'
-                                    }`}
+                                <div
+                                    className={`h-full transition-all duration-500 rounded-full ${hpPercent > 50 ? 'bg-gradient-to-r from-green-600 to-green-400' :
+                                            hpPercent > 25 ? 'bg-gradient-to-r from-yellow-600 to-yellow-400' :
+                                                'bg-gradient-to-r from-red-600 to-red-400'
+                                        }`}
                                     style={{ width: `${hpPercent}%` }}
                                 />
                             </div>
@@ -142,14 +130,13 @@ const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrad
                     </div>
 
                     {/* Upgrade Button */}
-                    <button 
+                    <button
                         onClick={() => onUpgrade(upgradeCost)}
                         disabled={!canAfford}
-                        className={`shrink-0 px-5 py-3 font-black text-sm rounded-xl shadow-lg transition-all duration-300 flex flex-col items-center leading-tight ${
-                            canAfford 
-                                ? 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-black hover:scale-105 hover:shadow-[0_0_20px_rgba(251,191,36,0.4)]' 
+                        className={`shrink-0 px-5 py-3 font-black text-sm rounded-xl shadow-lg transition-all duration-300 flex flex-col items-center leading-tight ${canAfford
+                                ? 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-400 hover:to-orange-400 text-black hover:scale-105 hover:shadow-[0_0_20px_rgba(251,191,36,0.4)]'
                                 : 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                        }`}
+                            }`}
                     >
                         <span className="text-base">{t('upgrade')}</span>
                         <span className="text-xs opacity-80 flex items-center gap-1">{upgradeCost} 💰</span>
@@ -164,20 +151,21 @@ const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrad
                     <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Skills & Equipment</h3>
                     <div className="h-px flex-1 bg-gradient-to-l from-transparent to-white/10" />
                 </div>
-                
+
                 <div className="grid grid-cols-8 sm:grid-cols-10 md:grid-cols-12 gap-1.5">
                     {SKILLS.map((skill) => {
                         const hasSkill = trooper.skills.some((s: Skill) => s.id === skill.id);
                         return (
                             <SkillTooltip key={skill.id} skill={skill} t={t} isLocked={!hasSkill}>
-                                <div 
-                                    className={`aspect-square flex items-center justify-center rounded-lg border cursor-help transition-all duration-200 ${
-                                        hasSkill 
-                                            ? 'bg-slate-800/80 border-slate-600/50 hover:border-yellow-500/50 hover:bg-slate-700/80 hover:scale-110 hover:shadow-lg' 
+                                <div
+                                    className={`aspect-square flex items-center justify-center rounded-lg border cursor-help transition-all duration-200 ${hasSkill
+                                            ? 'bg-slate-800/80 border-slate-600/50 hover:border-yellow-500/50 hover:bg-slate-700/80 hover:scale-110 hover:shadow-lg'
                                             : 'bg-slate-900/30 border-slate-800/30 opacity-20 grayscale'
-                                    }`}
+                                        }`}
                                 >
-                                    <span className="text-lg">{skill.icon}</span>
+                                    <div className={hasSkill ? 'text-white drop-shadow-md' : 'text-gray-600'}>
+                                        {GetSkillIcon(skill.id, 24, hasSkill ? "white" : "#4b5563")}
+                                    </div>
                                 </div>
                             </SkillTooltip>
                         );
@@ -194,12 +182,12 @@ const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrad
                             <span className="text-[10px] text-red-400 bg-red-400/10 px-2 py-0.5 rounded-full">🔒 Level 6</span>
                         )}
                     </div>
-                    
+
                     {trooper.level >= 6 ? (
                         <div className="grid grid-cols-3 gap-3">
                             <div>
                                 <label className="block text-[10px] text-gray-500 mb-1 uppercase">Priority</label>
-                                <select 
+                                <select
                                     value={trooper.tactics?.priority || 'closest'}
                                     onChange={(e) => onUpdateTactics && onUpdateTactics({ ...trooper.tactics, priority: e.target.value as any })}
                                     className="w-full bg-slate-900/80 border border-slate-700 rounded-lg px-3 py-2 text-xs text-gray-300 focus:border-blue-500 outline-none hover:bg-slate-800 transition"
@@ -212,7 +200,7 @@ const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrad
                             </div>
                             <div>
                                 <label className="block text-[10px] text-gray-500 mb-1 uppercase">Target</label>
-                                <select 
+                                <select
                                     value={trooper.tactics?.targetPart || 'any'}
                                     onChange={(e) => onUpdateTactics && onUpdateTactics({ ...trooper.tactics, targetPart: e.target.value as any })}
                                     className="w-full bg-slate-900/80 border border-slate-700 rounded-lg px-3 py-2 text-xs text-gray-300 focus:border-blue-500 outline-none hover:bg-slate-800 transition"
@@ -226,7 +214,7 @@ const TrooperProfile: React.FC<TrooperProfileProps> = ({ trooper, gold, onUpgrad
                             </div>
                             <div>
                                 <label className="block text-[10px] text-gray-500 mb-1 uppercase">Weapon</label>
-                                <select 
+                                <select
                                     value={trooper.tactics?.favoriteWeaponId || ''}
                                     onChange={(e) => onUpdateTactics && onUpdateTactics({ ...trooper.tactics, favoriteWeaponId: e.target.value || undefined })}
                                     className="w-full bg-slate-900/80 border border-slate-700 rounded-lg px-3 py-2 text-xs text-gray-300 focus:border-blue-500 outline-none hover:bg-slate-800 transition"
