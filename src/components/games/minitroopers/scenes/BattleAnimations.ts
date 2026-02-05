@@ -18,6 +18,9 @@ export class BattleAnimations {
         sabotage: 700,
         deploy: 600,
         hit: 200,
+        knock_down: 1500,
+        start_aim: 500,
+        switch_weapon: 800,
         recoil: 80
     };
 
@@ -212,7 +215,9 @@ export class BattleAnimations {
              targetY = 100 + log.targetPosition.y;
         }
 
-        // Recoil
+        // Speed Override for Rapid Fire (Bursts)
+        const duration = (log.data as any)?.speed === 'fast' ? 50 : this.getDuration('projectile');
+        const recoilDuration = (log.data as any)?.speed === 'fast' ? 20 : this.getDuration('recoil');
         this.scene.tweens.add({
             targets: actor,
             x: actor.x - 5 * (actor.scaleX > 0 ? 1 : -1),
@@ -237,7 +242,7 @@ export class BattleAnimations {
             targets: bullet,
             x: targetX,
             y: targetY,
-            duration: this.getDuration('projectile'),
+            duration: duration,
             onComplete: () => {
                 bullet.destroy();
                 // Hit Effect
@@ -254,22 +259,7 @@ export class BattleAnimations {
         });
     }
 
-    public animateSwitch(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
-        // Pop effect
-        this.scene.tweens.add({
-             targets: actor,
-             scaleY: 0.8 * Math.abs(actor.scaleY), // Squish
-             duration: this.getDuration('switch'),
-             yoyo: true,
-             onComplete: () => {
-                 // Update Sprite
-                 if (log.data?.weaponId) {
-                     this.updateWeaponSprite(actor, log.data.weaponId);
-                 }
-                 onComplete();
-             }
-        });
-    }
+
 
     public animateReload(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
         const icon = this.scene.add.text(actor.x, actor.y - 30, '🔄', { fontSize: '20px' }).setOrigin(0.5);
@@ -335,5 +325,91 @@ export class BattleAnimations {
                 onComplete();
             }
         });
+    }
+
+    public animateKnockDown(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
+        if (!log.targetPosition) { onComplete(); return; }
+        const startX = actor.x;
+        const startY = actor.y;
+        
+        // Convert simulation coords (0-1000) to pixel coords
+        const targetX = 50 + (log.targetPosition.x / 1000) * 700;
+        const targetY = 100 + log.targetPosition.y;
+
+        const midX = (startX + targetX) / 2;
+        const dist = Phaser.Math.Distance.Between(startX, startY, targetX, targetY);
+        const height = Math.min(200, dist * 0.5);
+        const midY = Math.min(startY, targetY) - height;
+
+        this.scene.tweens.addCounter({
+            from: 0, 
+            to: 1,
+            duration: this.getDuration('knock_down'),
+            onUpdate: (tween) => {
+                const t = tween.getValue() || 0;
+                const oneMinusT = 1 - t;
+                const x = oneMinusT * oneMinusT * startX + 2 * oneMinusT * t * midX + t * t * targetX;
+                const y = oneMinusT * oneMinusT * startY + 2 * oneMinusT * t * midY + t * t * targetY;
+                actor.x = x;
+                actor.y = y;
+                
+                const body = actor.getByName('bodyGfx') as Phaser.GameObjects.Graphics;
+                if (body) body.angle = t * 360 * 2; 
+            },
+            onComplete: () => {
+                const body = actor.getByName('bodyGfx') as Phaser.GameObjects.Graphics;
+                if (body) body.angle = 90; // Downed
+                onComplete();
+            }
+        });
+    }
+
+    public animateAim(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
+        const weapon = actor.getByName('weaponGfx') as Phaser.GameObjects.Graphics;
+        if (weapon) {
+            this.scene.tweens.add({
+                targets: weapon,
+                angle: -30,
+                duration: 300,
+                yoyo: true, 
+                onComplete
+            });
+        } else {
+            onComplete();
+        }
+    }
+
+    public animateSwitch(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
+        const weapon = actor.getByName('weaponGfx') as Phaser.GameObjects.Graphics;
+        if (!weapon) { onComplete(); return; }
+
+        this.scene.tweens.add({
+            targets: weapon,
+            alpha: 0,
+            duration: 300,
+            onComplete: () => {
+                this.updateWeaponSprite(actor, log.data?.weaponId);
+                this.scene.tweens.add({
+                    targets: weapon,
+                    alpha: 1,
+                    duration: 300,
+                    onComplete
+                });
+            }
+        });
+    }
+
+    public animateStandUp(actor: Phaser.GameObjects.Container, onComplete: () => void) {
+        const body = actor.getByName('bodyGfx');
+            if (body) {
+                this.scene.tweens.add({
+                    targets: body,
+                    angle: 0,
+                    duration: 500,
+                    onComplete
+                });
+            } else {
+                onComplete();
+            }
     }
 }

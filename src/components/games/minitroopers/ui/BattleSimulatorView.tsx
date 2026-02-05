@@ -40,6 +40,19 @@ const BattleSimulatorView: React.FC<BattleSimulatorViewProps> = ({
         });
     };
 
+    const handleCopyLog = () => {
+        const text = [...liveLogs]
+            .sort((a, b) => a.time - b.time)
+            .map(entry => `[${(entry.time / 100).toFixed(1)}s] ${entry.actorName}: ${entry.message}`)
+            .join('\n');
+
+        navigator.clipboard.writeText(text).then(() => {
+            alert('Combat Log copied to clipboard!');
+        }).catch(err => {
+            console.error('Failed to copy log:', err);
+        });
+    };
+
     // Filter log to only show entries up to current battle time
     // Sort by time to ensure chronological display (animations may complete out of order)
     const visibleLog = useMemo(() =>
@@ -80,6 +93,13 @@ const BattleSimulatorView: React.FC<BattleSimulatorViewProps> = ({
                     </button>
                     <div className="h-8 w-px bg-gray-700 mx-2"></div>
                     <h2 className="text-2xl text-gray-300 font-bold uppercase tracking-wide">{title}</h2>
+                    <div className="h-8 w-px bg-gray-700 mx-2"></div>
+                    <button
+                        onClick={handleCopyLog}
+                        className="pixel-btn bg-blue-900/50 hover:bg-blue-800 border-blue-700 text-blue-200 text-sm py-1 px-3 flex items-center gap-2 transition"
+                    >
+                        📋 Copy Log
+                    </button>
                 </div>
 
                 {/* Result Badge */}

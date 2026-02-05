@@ -205,6 +205,8 @@ const Doctor: SkillImplementation = {
 const TriggerHappy: SkillImplementation = {
     id: 'trigger_happy',
     onTurnEnd: (trooper: Trooper, context: BattleContext) => {
+        if (!trooper.currentWeaponId) return; // Don't trigger if unarmed
+
         if (Math.random() < 0.2) {
             context.log.push({
                 time: context.time, 

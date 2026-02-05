@@ -7,7 +7,7 @@ import BattleArena from './BattleArena';
 import RecruitmentCenter from './RecruitmentCenter';
 import type { BattleResult, Player, BattleHistoryEntry, TrooperData } from '@/logic/minitroopers/types';
 import { Trooper } from '@/logic/minitroopers/classes/Trooper';
-import { useTranslation } from '@/logic/minitroopers/i18n';
+import { useTranslation, TranslationProvider } from '@/logic/minitroopers/i18n';
 import { simulateBattle, calculateSquadPower } from '@/logic/minitroopers/combat';
 import BattleSimulatorView from './BattleSimulatorView';
 import { saveGame, loadGame } from '@/logic/minitroopers/storage';
@@ -23,7 +23,7 @@ import { Loader } from '@/components/ui/Loader';
 
 type View = 'HQ' | 'BATTLE' | 'HISTORY' | 'SIMULATION' | 'RECRUIT';
 
-const MiniTroopersLayout: React.FC = () => {
+const MiniTroopersApp: React.FC = () => {
     const { t, lang, changeLanguage } = useTranslation();
     const [currentView, setCurrentView] = useState<View>('HQ');
     const [selectedTrooperId, setSelectedTrooperId] = useState<string | null>(null);
@@ -46,7 +46,7 @@ const MiniTroopersLayout: React.FC = () => {
                     instance.recalculateStats();
                     return instance;
                 });
-                
+
                 setSelectedTrooperId(savedState.troopers[0].id);
             }
         } else {
@@ -61,7 +61,7 @@ const MiniTroopersLayout: React.FC = () => {
             };
             setPlayer(newPlayer);
             saveGame(newPlayer);
-            
+
             // Generate initial candidates
             const candidates = [
                 generateRandomTrooper(1),
@@ -101,14 +101,14 @@ const MiniTroopersLayout: React.FC = () => {
             case 3: return [generateRat(2), generateRat(1), generateRat(1)]; // Power ~70
             case 4: return [generateRat(2), generateRat(2), generateRat(2)]; // Power ~90
             case 5: return [generateRat(3), generateRat(3), generateRat(2), generateRat(2)]; // Power ~140 (Boss of Tier 1)
-            
+
             // Tier 2: The Army (Recruits) - significantly stronger than Rats
             case 6: return [generateSpecificTrooper('Recruit', 3), generateSpecificTrooper('Recruit', 3)]; // Power ~150 (2 stronger units > 4 weak rats)
             case 7: return [generateSpecificTrooper('Recruit', 4), generateSpecificTrooper('Soldier', 3), generateSpecificTrooper('Recruit', 3)]; // Power ~200
             case 8: return [generateSpecificTrooper('Soldier', 4), generateSpecificTrooper('Soldier', 4), generateSpecificTrooper('Doctor', 3)]; // Power ~250
             case 9: return [generateSpecificTrooper('Soldier', 5), generateSpecificTrooper('Soldier', 5), generateSpecificTrooper('Sniper', 4), generateSpecificTrooper('Recruit', 4)]; // Power ~300
             case 10: return [generateSpecificTrooper('Commando', 5), generateSpecificTrooper('Doctor', 5), generateSpecificTrooper('Soldier', 5), generateSpecificTrooper('Soldier', 5)]; // Power ~350
-            
+
             // Tier 3: Special Forces - High Skill
             case 11: return [generateSpecificTrooper('Soldier', 6), generateSpecificTrooper('Soldier', 6), generateSpecificTrooper('Sniper', 6), generateSpecificTrooper('Doctor', 5)]; // Power ~450
             case 12: return [generateSpecificTrooper('Commando', 6), generateSpecificTrooper('Commando', 6), generateSpecificTrooper('Scout', 6), generateSpecificTrooper('Soldier', 6)]; // Power ~500
@@ -117,14 +117,14 @@ const MiniTroopersLayout: React.FC = () => {
             case 15: return [generateSpecificTrooper('Sniper', 8), generateSpecificTrooper('Sniper', 8), generateSpecificTrooper('Soldier', 8), generateSpecificTrooper('Soldier', 8), generateSpecificTrooper('Comms Officer', 8)]; // Power ~800
 
             // Tier 4: Legends - Impossible?
-            case 16: 
-                     // Using 'Commando' as tanky proxy since 'Heavy Tank' is not a valid class.
-                     return [generateSpecificTrooper('Commando', 9), generateSpecificTrooper('Commando', 9), generateSpecificTrooper('Doctor', 9), generateSpecificTrooper('Comms Officer', 9), generateSpecificTrooper('Soldier', 9)]; 
+            case 16:
+                // Using 'Commando' as tanky proxy since 'Heavy Tank' is not a valid class.
+                return [generateSpecificTrooper('Commando', 9), generateSpecificTrooper('Commando', 9), generateSpecificTrooper('Doctor', 9), generateSpecificTrooper('Comms Officer', 9), generateSpecificTrooper('Soldier', 9)];
             case 17: return [generateSpecificTrooper('Commando', 10), generateSpecificTrooper('Commando', 10), generateSpecificTrooper('Commando', 10), generateSpecificTrooper('Spy', 10), generateSpecificTrooper('Spy', 10)]; // Power ~1000
             case 18: return [generateSpecificTrooper('Sniper', 11), generateSpecificTrooper('Sniper', 11), generateSpecificTrooper('Sniper', 11), generateSpecificTrooper('Scout', 11), generateSpecificTrooper('Scout', 11), generateSpecificTrooper('Saboteur', 11)]; // Power ~1200
             case 19: return [generateSpecificTrooper('Soldier', 12), generateSpecificTrooper('Soldier', 12), generateSpecificTrooper('Soldier', 12), generateSpecificTrooper('Doctor', 12), generateSpecificTrooper('Comms Officer', 12), generateSpecificTrooper('Commando', 12)]; // Power ~1400
             case 20: return [generateSpecificTrooper('Soldier', 13), generateSpecificTrooper('Soldier', 13), generateSpecificTrooper('Soldier', 13), generateSpecificTrooper('Soldier', 13), generateSpecificTrooper('Soldier', 13), generateSpecificTrooper('Soldier', 13), generateSpecificTrooper('Soldier', 13), generateSpecificTrooper('Soldier', 13)]; // The Final Stand (Army of 8) ~2000
-            
+
             default: return [generateRat(1)];
         }
     };
@@ -158,31 +158,31 @@ const MiniTroopersLayout: React.FC = () => {
 
     const handleStartBattle = (battleType: string) => {
         if (!player) return;
-        
+
         const myPower = calculateSquadPower(player.troopers as Trooper[]);
         const opponentSquad = generateOpponent(battleType, myPower);
-        
-        
+
+
         // Deep copy via clone/instantiate to avoid mutating initial state across battles
         const mySquad = player.troopers.map(t => {
             if (t instanceof Trooper) return t.clone();
             return instantiateTrooper(t);
         });
-        
+
         // Ensure HP is full
         mySquad.forEach(t => t.attributes.hp = t.attributes.maxHp);
 
         const enemySquad = opponentSquad.map(t => {
-             // Clone first
-             let clone: Trooper;
-             if (t instanceof Trooper) clone = t.clone();
-             else clone = instantiateTrooper(t);
+            // Clone first
+            let clone: Trooper;
+            if (t instanceof Trooper) clone = t.clone();
+            else clone = instantiateTrooper(t);
 
-             // Set Team B
-             clone.team = 'B';
-             // Full HP (just in case)
-             clone.attributes.hp = clone.attributes.maxHp;
-             return clone;
+            // Set Team B
+            clone.team = 'B';
+            // Full HP (just in case)
+            clone.attributes.hp = clone.attributes.maxHp;
+            return clone;
         });
 
         // Store for visualization (Use enemySquad which has correct Team B assignment)
@@ -190,7 +190,7 @@ const MiniTroopersLayout: React.FC = () => {
 
         const result = simulateBattle(mySquad, enemySquad);
         setBattleResult(result);
-        
+
         // Update Player History & Gold
         setPlayer(prev => {
             if (!prev) return null;
@@ -210,22 +210,22 @@ const MiniTroopersLayout: React.FC = () => {
 
             let newGold = prev.gold;
             if (result.winner === 'A') {
-            if (result.winner === 'A') {
-                let reward = 10;
-                if (battleType === 'easy_money') reward = 500;
-                else if (battleType === 'progressive_rats') reward = 10 + Math.floor(myPower / 10);
-                else if (battleType === 'progressive_troopers') reward = 30 + Math.floor(myPower / 4);
-                else if (battleType.startsWith('campaign_')) {
-                    const stage = parseInt(battleType.split('_')[1]);
-                    reward = stage * 50; // 50, 100, 150...
+                if (result.winner === 'A') {
+                    let reward = 10;
+                    if (battleType === 'easy_money') reward = 500;
+                    else if (battleType === 'progressive_rats') reward = 10 + Math.floor(myPower / 10);
+                    else if (battleType === 'progressive_troopers') reward = 30 + Math.floor(myPower / 4);
+                    else if (battleType.startsWith('campaign_')) {
+                        const stage = parseInt(battleType.split('_')[1]);
+                        reward = stage * 50; // 50, 100, 150...
+                    }
+                    newGold += reward;
                 }
-                newGold += reward;
-            }
             }
 
             return { ...prev, gold: newGold, history: newHistory };
         });
-        
+
         setCurrentView('SIMULATION');
     };
 
@@ -265,11 +265,11 @@ const MiniTroopersLayout: React.FC = () => {
                         const instance = t instanceof Trooper ? t : instantiateTrooper(t);
                         // applyLevelUp returns a cloned instance with prototype
                         const upgradedInstance = applyLevelUp(instance, skill);
-                        
+
                         // Recalculate stats on the NEW instance
                         upgradedInstance.recalculateStats();
                         upgradedInstance.pendingChoices = undefined;
-                        
+
                         return upgradedInstance;
                     }
                     return t;
@@ -289,7 +289,7 @@ const MiniTroopersLayout: React.FC = () => {
         setCurrentView('RECRUIT');
     };
 
-    const handleRecruit = (trooper: Trooper) => {
+    const handleRecruit = (trooper: TrooperData) => {
         if (!player) return;
         const baseCost = 50;
         const count = player.troopers.length;
@@ -330,7 +330,7 @@ const MiniTroopersLayout: React.FC = () => {
 
     if (!player) return (
         <div className="flex items-center justify-center min-h-[800px] bg-gray-900 text-white rounded-xl">
-             <Loader text="Initializing Headquarters..." size="large" />
+            <Loader text="Initializing Headquarters..." size="large" />
         </div>
     );
 
@@ -343,11 +343,11 @@ const MiniTroopersLayout: React.FC = () => {
                 {/* Sidebar */}
                 <div className="w-80 bg-gray-950 flex flex-col border-r border-gray-800 shrink-0">
                     <div className="p-4 border-b border-gray-900 bg-gray-950">
-                         <h1 className="text-3xl text-gray-200 tracking-tighter uppercase italic font-vt323 font-bold">MINI TROOPERS</h1>
-                         <div className="flex justify-between items-center mt-2">
+                        <h1 className="text-3xl text-gray-200 tracking-tighter uppercase italic font-vt323 font-bold">MINI TROOPERS</h1>
+                        <div className="flex justify-between items-center mt-2">
                             <div className="text-yellow-500 font-bold text-sm">💰 {player.gold}</div>
                             <div className="flex items-center gap-2">
-                                <button 
+                                <button
                                     onClick={() => changeLanguage(lang === 'en' ? 'es' : 'en')}
                                     className="text-xs bg-gray-800 text-gray-400 hover:text-white px-2 py-1 rounded border border-gray-700 uppercase font-bold transition-colors"
                                 >
@@ -355,7 +355,7 @@ const MiniTroopersLayout: React.FC = () => {
                                 </button>
                                 <button onClick={handleResetData} className="text-xs text-red-900 hover:text-red-500 uppercase font-bold">Res</button>
                             </div>
-                         </div>
+                        </div>
                     </div>
 
                     <div className="flex border-b border-gray-800">
@@ -363,11 +363,10 @@ const MiniTroopersLayout: React.FC = () => {
                             <button
                                 key={view}
                                 onClick={() => setCurrentView(view as any)}
-                                className={`flex-1 py-3 text-lg transition-colors ${
-                                    currentView === view || (view === 'BATTLE' && currentView === 'SIMULATION')
-                                        ? 'bg-gray-800 text-white border-b-2 border-blue-500'
-                                        : 'text-gray-500 hover:text-gray-300 hover:bg-gray-900'
-                                }`}
+                                className={`flex-1 py-3 text-lg transition-colors ${currentView === view || (view === 'BATTLE' && currentView === 'SIMULATION')
+                                    ? 'bg-gray-800 text-white border-b-2 border-blue-500'
+                                    : 'text-gray-500 hover:text-gray-300 hover:bg-gray-900'
+                                    }`}
                             >
                                 {view}
                             </button>
@@ -377,27 +376,27 @@ const MiniTroopersLayout: React.FC = () => {
                     <div className="flex-1 overflow-y-auto p-3">
                         <div className="flex justify-between items-end mb-2 px-1">
                             <div className="flex justify-between w-full items-center">
-                                 <span className="text-lg text-gray-400 uppercase tracking-widest">{player.name}</span>
-                                 <span className="text-lg text-yellow-500">PWR {calculateSquadPower(player.troopers as Trooper[])}</span>
+                                <span className="text-lg text-gray-400 uppercase tracking-widest">{player.name}</span>
+                                <span className="text-lg text-yellow-500">PWR {calculateSquadPower(player.troopers as Trooper[])}</span>
                             </div>
                         </div>
-                        
+
                         <div className="grid grid-cols-1 gap-2">
                             {player.troopers.map(trooper => (
-                                <TrooperCard 
-                                    key={trooper.id} 
-                                    trooper={trooper} 
+                                <TrooperCard
+                                    key={trooper.id}
+                                    trooper={trooper}
                                     isSelected={selectedTrooperId === trooper.id && currentView === 'HQ'}
                                     onClick={() => {
                                         setSelectedTrooperId(trooper.id);
-                                        if(currentView !== 'HQ') setCurrentView('HQ');
+                                        if (currentView !== 'HQ') setCurrentView('HQ');
                                     }}
                                     t={t}
                                 />
                             ))}
-                            
-                             <button 
-                                onClick={handleEnterRecruit} 
+
+                            <button
+                                onClick={handleEnterRecruit}
                                 className="w-full mt-2 bg-blue-900/40 text-blue-400 hover:text-white hover:bg-blue-800 border border-blue-900/50 rounded py-2 text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2"
                             >
                                 + RECRUIT UNIT
@@ -416,8 +415,8 @@ const MiniTroopersLayout: React.FC = () => {
                                 <h2 className="text-3xl font-black mb-8 text-white tracking-tight flex items-center gap-4">
                                     <span className="text-blue-500">/</span> {t('trooper_profile')}
                                 </h2>
-                                <TrooperProfile 
-                                    trooper={selectedTrooper} 
+                                <TrooperProfile
+                                    trooper={selectedTrooper}
                                     gold={player.gold}
                                     onUpgrade={(cost) => handleUpgradeTrooper(selectedTrooper.id, cost)}
                                     t={t}
@@ -442,10 +441,10 @@ const MiniTroopersLayout: React.FC = () => {
                                 />
                             </div>
                         )}
-                        
+
                         {currentView === 'RECRUIT' && (
                             <div className="max-w-5xl mx-auto">
-                                <RecruitmentCenter 
+                                <RecruitmentCenter
                                     candidates={recruitCandidates}
                                     onRecruit={handleRecruit}
                                     recruitCostCalculator={(count) => Math.floor(50 * Math.pow(1.5, count))}
@@ -455,32 +454,32 @@ const MiniTroopersLayout: React.FC = () => {
                                 />
                             </div>
                         )}
-                        
+
                         {currentView === 'BATTLE' && (
                             <div className="max-w-6xl mx-auto">
-                                <BattleArena 
+                                <BattleArena
                                     onStartBattle={handleStartBattle}
-                                    t={t} 
+                                    t={t}
                                     playerPower={calculateSquadPower(player.troopers as Trooper[])}
                                     getCampaignOpponent={getCampaignOpponent}
-                                 />
+                                />
                             </div>
                         )}
 
                         {currentView === 'SIMULATION' && battleResult && (
                             <div className="flex-1 min-h-0 flex flex-col">
-                                 <div className="h-16 bg-gray-950/50 border-b border-gray-800 flex items-center px-6 mb-4 rounded-xl shrink-0">
+                                <div className="h-16 bg-gray-950/50 border-b border-gray-800 flex items-center px-6 mb-4 rounded-xl shrink-0">
                                     <h2 className="text-xl font-black text-white tracking-tight flex items-center gap-2">
                                         <span className="text-red-500">⚔️</span> {t('battle_simulation') || 'BATTLE SIMULATION'}
                                     </h2>
-                                 </div>
-                                 <BattleSimulatorView
-                                     battleResult={battleResult}
-                                     mySquad={currentView === 'SIMULATION' && battleResult ? (battleResult as any).mySquadSnapshot || player.troopers : player.troopers}
-                                     opponentSquad={currentView === 'SIMULATION' && battleResult ? (battleResult as any).opponentSquadSnapshot || currentOpponent : currentOpponent}
-                                     onClose={() => setCurrentView('BATTLE')}
-                                     backLabel="Back to Arena"
-                                 />
+                                </div>
+                                <BattleSimulatorView
+                                    battleResult={battleResult}
+                                    mySquad={currentView === 'SIMULATION' && battleResult ? (battleResult as any).mySquadSnapshot || player.troopers : player.troopers}
+                                    opponentSquad={currentView === 'SIMULATION' && battleResult ? (battleResult as any).opponentSquadSnapshot || currentOpponent : currentOpponent}
+                                    onClose={() => setCurrentView('BATTLE')}
+                                    backLabel="Back to Arena"
+                                />
                             </div>
                         )}
 
@@ -489,7 +488,7 @@ const MiniTroopersLayout: React.FC = () => {
                                 <h2 className="text-3xl font-black text-white mb-6 flex items-center gap-3">
                                     <span className="text-gray-500">📜</span> {t('battle_history') || 'Battle History'}
                                 </h2>
-                                
+
                                 {player.history && player.history.length > 0 ? (
                                     <div className="space-y-4">
                                         {player.history.map(entry => (
@@ -503,7 +502,7 @@ const MiniTroopersLayout: React.FC = () => {
                                                         {entry.result}
                                                     </div>
                                                     {entry.mySquadSnapshot && entry.opponentSquadSnapshot && (
-                                                        <button 
+                                                        <button
                                                             onClick={() => {
                                                                 setBattleResult({
                                                                     winner: entry.result === 'VICTORY' ? 'A' : 'B', // Approximate, logic might be needed if draw
@@ -540,6 +539,14 @@ const MiniTroopersLayout: React.FC = () => {
                 </div>
             </div>
         </div>
+    );
+};
+
+const MiniTroopersLayout: React.FC = () => {
+    return (
+        <TranslationProvider>
+            <MiniTroopersApp />
+        </TranslationProvider>
     );
 };
 

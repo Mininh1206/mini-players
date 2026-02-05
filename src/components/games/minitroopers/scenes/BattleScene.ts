@@ -20,7 +20,7 @@ export class BattleScene extends Phaser.Scene {
     public onTimeUpdate?: (time: number) => void;
     
     // Core Logic
-    private static readonly TICKS_PER_SECOND = 30; // 30 ticks/s = ~33ms per tick. Cinematic pacing.
+    private static readonly TICKS_PER_SECOND = 100; // 100 ticks/s = 10ms per tick. 1:1 Realtime.
     private battleTime: number = 0;
     private speedMultiplier: number = 1;
     
@@ -416,12 +416,15 @@ export class BattleScene extends Phaser.Scene {
         }
 
         switch (log.action) {
+            case 'knock_down': this.animations.animateKnockDown(actor, log, onComplete); break;
+            case 'start_aim': this.animations.animateAim(actor, log, onComplete); break;
             case 'move': this.animations.animateMove(actor, log, onComplete); break;
             case 'attack': this.animations.animateAttack(actor, log, (id) => this.troopers.get(id), onComplete); break;
             case 'switch_weapon': this.animations.animateSwitch(actor, log, onComplete); break;
             case 'reload': this.animations.animateReload(actor, log, onComplete); break;
             case 'wait': 
                 if (log.message.includes('dies')) this.animations.animateDeath(actor, log, onComplete);
+                else if (log.data?.reason === 'recover') this.animations.animateStandUp(actor, onComplete);
                 else this.time.delayedCall(200 / this.speedMultiplier, onComplete);
                 break;
             case 'heal': this.animations.animateHeal(actor, log, onComplete); break;
@@ -558,7 +561,7 @@ export class BattleScene extends Phaser.Scene {
         this.animations.drawTrooper(container, {
             team: team,
             vehicle: log.data?.vehicle,
-            currentWeaponId: def?.currentWeaponId || log.data?.currentWeaponId
+            currentWeaponId: undefined // FORCE Unarmed on deploy. They will "Switch" later.
         });
 
         container.setDepth(1000);
@@ -570,7 +573,7 @@ export class BattleScene extends Phaser.Scene {
             container.setData('class', def.class);
             container.setData('level', def.level);
             container.setData('team', team);
-            container.setData('currentWeaponId', def.currentWeaponId);
+            container.setData('currentWeaponId', undefined); // FORCE Unarmed
             container.setData('hp', def.attributes.hp);
             container.setData('maxHp', def.attributes.maxHp);
             container.setData('initiative', def.attributes.initiative);

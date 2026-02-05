@@ -88,6 +88,7 @@ export interface TrooperData {
     vehicle?: TrooperVehicle;
     wounds?: Wounds;
     status?: Record<string, number>; // Effect -> Duration/Value
+    state?: TrooperState;
 }
 
 export interface BattleLogEntry {
@@ -97,10 +98,11 @@ export interface BattleLogEntry {
     actorName: string;
     targetId?: string;
     targetName?: string;
-    action: 'attack' | 'heal' | 'wait' | 'move' | 'deploy' | 'switch_weapon' | 'reload' | 'use_equipment' | 'swap' | 'melee' | 'knockback' | 'vehicle_destroy' | 'eject' | 'jam_weapon' | 'sabotage';
+    action: 'attack' | 'heal' | 'wait' | 'move' | 'deploy' | 'switch_weapon' | 'reload' | 'use_equipment' | 'swap' | 'melee' | 'knockback' | 'vehicle_destroy' | 'eject' | 'jam_weapon' | 'sabotage' | 'start_aim' | 'aim_complete' | 'knock_down';
     damage?: number;
     heal?: number;
     targetPosition?: { x: number; y: number };
+
     isCrit?: boolean;
     isMiss?: boolean;
     isDodge?: boolean;
@@ -111,6 +113,13 @@ export interface BattleLogEntry {
     isVehicleHit?: boolean;
     data?: any; // Extensible metadata (e.g. weaponId)
 }
+
+export type TrooperState = 
+  | { type: 'IDLE' }
+  | { type: 'AIMING'; targetId: string; weaponId: string; current: number; required: number }
+  | { type: 'SWITCHING'; targetWeaponId: string; current: number; required: number }
+  | { type: 'RELOADING'; weaponId: string; current: number; required: number }
+  | { type: 'DOWNED'; current: number; duration: number; recoverProgress?: number };
 
 export interface BattleResult {
     winner: 'A' | 'B' | 'Draw';
@@ -136,4 +145,17 @@ export interface Player {
     troopers: TrooperData[];
     lastPlayed: number;
     history: BattleHistoryEntry[];
+}
+
+export interface BattleContext {
+    time: number;
+    turn: number;
+    log: BattleLogEntry[];
+    allTroopers: TrooperData[];
+    deployedA?: TrooperData[];
+    deployedB?: TrooperData[];
+    reserveA?: TrooperData[];
+    reserveB?: TrooperData[];
+    jammedWeapons?: Map<string, string[]>;
+    // Optional helpers or properties can be added here
 }
