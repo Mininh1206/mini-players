@@ -593,10 +593,10 @@ export abstract class Trooper implements TrooperData {
                               targetId: (target as Trooper).id,
                               weaponId: equippedWeapon.id
                           };
-                          this.recoveryTime = 4;
+                          this.recoveryTime = 5;
                       } else {
-                          const baseRecovery = (equippedWeapon as any).recovery || 10;
-                          this.recoveryTime = Math.max(0, Math.max(10, baseRecovery - (this.attributes.recoveryMod || 0) * 10));
+                          const baseRecovery = (equippedWeapon as any).recovery || 20;
+                          this.recoveryTime = Math.max(0, Math.max(20, baseRecovery - (this.attributes.recoveryMod || 0) * 10));
                       }
                       actionTaken = true;
                  }
@@ -629,7 +629,7 @@ export abstract class Trooper implements TrooperData {
                    this.ammo![equippedWeapon.id] = currentAmmo + 1;
                    this.reserves![equippedWeapon.id] = reserves - 1;
                    log.push({ time, actorId: this.id, actorName: this.name, action: 'reload', message: `${this.name} reloads (1).` });
-                   this.recoveryTime = 5; // Faster for single bullet
+                   this.recoveryTime = 10; // Faster for single bullet
                    actionTaken = true;
                }
         }
@@ -649,7 +649,7 @@ export abstract class Trooper implements TrooperData {
                     (target as Trooper).attributes.hp = Math.max(0, (target as Trooper).attributes.hp - damage);
                     if ((target as Trooper).attributes.hp === 0) (target as Trooper).isDead = true;
                 }
-               this.recoveryTime = 20;
+               this.recoveryTime = 30; // 1s recovery for melee punch
                actionTaken = true;
         }
 

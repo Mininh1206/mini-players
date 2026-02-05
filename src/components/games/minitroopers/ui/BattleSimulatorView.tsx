@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import MiniTroopersGame from '../MiniTroopersGame';
-import type { BattleResult } from '@/logic/minitroopers/types';
+import type { BattleResult, BattleLogEntry } from '@/logic/minitroopers/types';
 import { Trooper } from '@/logic/minitroopers/classes/Trooper';
 import { useTranslation } from '@/logic/minitroopers/i18n';
 
@@ -23,10 +23,29 @@ const BattleSimulatorView: React.FC<BattleSimulatorViewProps> = ({
 }) => {
     const { t } = useTranslation();
     const [battleTime, setBattleTime] = useState(0);
+    const [liveLogs, setLiveLogs] = useState<BattleLogEntry[]>([]);
     const logContainerRef = useRef<HTMLDivElement>(null);
 
+    // Reset live logs when battle result changes
+    useEffect(() => {
+        setLiveLogs([]);
+        setBattleTime(0);
+    }, [battleResult]);
+
+    const handleLogEntry = (log: BattleLogEntry) => {
+        setLiveLogs(prev => {
+            // Avoid duplicates just in case
+            if (prev.some(l => l === log)) return prev;
+            return [...prev, log];
+        });
+    };
+
     // Filter log to only show entries up to current battle time
-    const visibleLog = battleResult.log.filter(entry => entry.time <= battleTime);
+    // Sort by time to ensure chronological display (animations may complete out of order)
+    const visibleLog = useMemo(() =>
+        [...liveLogs].sort((a, b) => a.time - b.time),
+        [liveLogs]
+    );
 
     // Auto-scroll log to bottom when new entries appear
     useEffect(() => {
@@ -83,6 +102,7 @@ const BattleSimulatorView: React.FC<BattleSimulatorViewProps> = ({
                         opponentSquad={opponentSquad}
                         translations={translations}
                         onBattleTimeUpdate={setBattleTime}
+                        onLogEntry={handleLogEntry}
                     />
 
                     {/* Overlay Text (optional/if scene doesn't render it) */}

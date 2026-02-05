@@ -120,26 +120,8 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
                 deployed.push(trooper);
                 currentCost += cost;
 
-                let msg = `${trooper.name} enters the battlefield!`;
-                if (jammedWeapons.has(trooper.id)) {
-                    msg += ` (Weapon Jammed!)`;
-                }
-
-                log.push({
-                    time,
-                    actorId: trooper.id,
-                    actorName: trooper.name,
-                    action: 'deploy',
-                    message: msg,
-                    targetPosition: { ...trooper.position }, // Clone to avoid mutation by ref
-                    data: { 
-                        attributes: { ...trooper.attributes },
-                        maxHp: trooper.attributes.maxHp, // Explicitly separate for easy access
-                        hp: trooper.attributes.hp
-                    }
-                });
-
                 // Trigger onDeploy Skills (e.g. Spy, Vehicles)
+                // We run this BEFORE logging the deploy, so any position changes (Spy) or Vehicle mounts (Vehicles) are reflected in the log.
                 skillManager.executeOnDeploy(trooper, {
                     time,
                     turn: time, // Pass time as turn
@@ -151,6 +133,30 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
                     reserveB,
                     jammedWeapons
                 });
+
+                let msg = `${trooper.name} enters the battlefield!`;
+                if (trooper.vehicle) {
+                     msg = `${trooper.name} rolls out in a ${trooper.vehicle.name}!`;
+                }
+                if (jammedWeapons.has(trooper.id)) {
+                    msg += ` (Weapon Jammed!)`;
+                }
+
+                // Log Deploy (Status of trooper is now final for this spawn)
+                log.push({
+                    time,
+                    actorId: trooper.id,
+                    actorName: trooper.name,
+                    action: 'deploy',
+                    message: msg,
+                    targetPosition: { ...trooper.position }, // Clone to avoid mutation by ref
+                    data: { 
+                        attributes: { ...trooper.attributes },
+                        maxHp: trooper.attributes.maxHp, // Explicitly separate for easy access
+                        hp: trooper.attributes.hp,
+                        vehicle: trooper.vehicle ? { ...trooper.vehicle } : undefined // Pass vehicle info
+                    }
+                });
             } else {
                 break;
             }
@@ -159,6 +165,12 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
 
     let time = 0;
     const maxTime = 10000; // Max ticks (e.g. 100 seconds if 1 tick = 10ms)
+
+    // Unarmed Spawn: Ensure all troopers start with no weapon equipped (Fists)
+    // They will equip their preferred weapon on their first turn turn, OR if they spawn in a vehicle (handled by onBattleStart below).
+    [...reserveA, ...reserveB].forEach(t => {
+        t.currentWeaponId = undefined; 
+    });
 
     // Initial Deployment
     deploy(reserveA, deployedA, limitA, log, 0, 'A');
@@ -226,18 +238,18 @@ export function simulateBattle(teamA: Trooper[], teamB: Trooper[]): BattleResult
                     
                     if (burst.shotsRemaining > 0 && (actor.ammo?.[weaponId] || 0) > 0 && !target.isDead) {
                         // Continue Burst
-                         actor.recoveryTime = 4; // 4 ticks between shots (~40ms?)
+                         actor.recoveryTime = 5; // 5 ticks between shots (~165ms at 30tps)
                     } else {
                         // End Burst
                         delete actor.burstState;
-                        const baseRecovery = (weapon as any).recovery || 10;
-                        actor.recoveryTime = Math.max(0, Math.max(10, baseRecovery - (actor.attributes.recoveryMod || 0) * 10));
+                        const baseRecovery = (weapon as any).recovery || 20;
+                        actor.recoveryTime = Math.max(0, Math.max(20, baseRecovery - (actor.attributes.recoveryMod || 0) * 10));
                     }
                 } else {
                     // Burst Interrupted (Target dead, no ammo, etc)
                     delete actor.burstState;
-                     const baseRecovery = (weapon && (weapon as any).recovery) || 10;
-                    actor.recoveryTime = Math.max(0, Math.max(10, baseRecovery - (actor.attributes.recoveryMod || 0) * 10));
+                     const baseRecovery = (weapon && (weapon as any).recovery) || 20;
+                    actor.recoveryTime = Math.max(0, Math.max(20, baseRecovery - (actor.attributes.recoveryMod || 0) * 10));
                 }
                 continue; // Skip normal action decision this tick
             }

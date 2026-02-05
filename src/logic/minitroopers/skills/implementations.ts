@@ -5,6 +5,8 @@ import { SKILLS } from '../combat';
 import { SKILLS as ALL_SKILLS_DEFS, LightCannon, HeavyCannon, VehicleMachineGun, TwinMachineGun } from '../skills'; 
 import { getDistance } from '../utils'; 
 import { getSabotage, getCommunications } from '../stats'; 
+import { getVehicleConfig } from '../vehicles';
+import type { VehicleType } from '../types'; 
 
 // --- Passive Skills ---
 
@@ -893,11 +895,7 @@ const Spy: SkillImplementation = {
         trooper.position!.x = enemyXStart + Math.random() * (enemyXEnd - enemyXStart);
         trooper.position!.y = 50 + Math.random() * 300;
         
-        context.log.push({
-            time: context.time, actorId: trooper.id, actorName: trooper.name, action: 'deploy',
-            message: `${trooper.name} infiltrates behind enemy lines! (Spy)`,
-            targetPosition: { x: trooper.position?.x || 0, y: trooper.position?.y || 0 }
-        });
+        // NO LOG: Deploy log in combat.ts will pick up final position.
     }
 };
 
@@ -911,14 +909,11 @@ const Pilot: SkillImplementation = {
 
 
 const Munitioner: SkillImplementation = {
-    id: 'munitioner', // Check actual ID in skills.ts (might be 'munitioner' or something else)
+    id: 'munitioner',
     onTurnStart: (trooper: Trooper, context: BattleContext): boolean => {
-         // Restock allies
          const allies = trooper.team === 'A' ? context.deployedA : context.deployedB;
          allies.forEach(a => {
-             // Refill ammo for all weapons
              Object.keys(a.ammo || {}).forEach(wId => {
-                  // Find capacity
                   const w = a.skills.find(s => s.id === wId);
                   if (w && (w as any).capacity) {
                       const limit = (w as any).capacity;
@@ -928,7 +923,6 @@ const Munitioner: SkillImplementation = {
                   }
              });
          });
-         // Does not consume action? "Al WaveEnd".
          return false; 
     }
 };
@@ -937,30 +931,10 @@ const Munitioner: SkillImplementation = {
 const Saboteur: SkillImplementation = {
     id: 'saboteur',
     onBattleStart: (trooper: Trooper, context: BattleContext) => {
-        // Only trigger if this is the trooper's own turn to sabotage? 
-        // Or simplified: Calculate total team sabotage vs enemy comms ONCE per team?
-        // Current system calls onBattleStart for EVERY trooper.
-        // To avoid multiple triggers stacking weirdly, we should maybe check if we've already run sabotage for this team?
-        // OR: Just let each saboteur contribute their own distinct sabotage value?
-        // Original game: Total Sabotage points - Total Comms points = Number of jammed weapons.
-        // If we do it per saboteur, we need to be careful.
-        // Better approach: Calculate GLOBALLY for the team, but `onBattleStart` runs per unit.
-        // Hack: We can just run the logic 1 time per team. 
-        // OR: `getSabotage` in stats.ts calculates the SUM. 
-        // So if we run this for EVERY saboteur, we might apply it multiple times.
-        // Check context or flag?
-        // Let's rely on a context flag or just run it if `trooper` is the *first* saboteur found in the team array?
-        // Or simpler: Just calculate `myContribution`? 
-        // No, formula is (Total Sabotage - Total Comms). This needs global scope.
-        
-        // Safe implementation:
-        // We only execute if this trooper is the designated "Sabotage Leader" (e.g. first one in array).
         const allies = context.allTroopers.filter(t => t.team === trooper.team && !t.isDead);
         const myTeamSaboteurs = allies.filter(t => t.skills.some(s => s.id === 'saboteur'));
         
         if (myTeamSaboteurs.length > 0 && myTeamSaboteurs[0].id === trooper.id) {
-             // I am the first saboteur, I execute the team's sabotage.
-             // Imports are now at the top level to compatible with Vite/ESM
              const totalSabotage = getSabotage(allies);
              const enemies = context.allTroopers.filter(t => t.team !== trooper.team);
              const totalComms = getCommunications(enemies);
@@ -969,27 +943,22 @@ const Saboteur: SkillImplementation = {
              
              let sabotagedCount = 0;
              let attempts = 0;
-             const MAX_ATTEMPTS = 50; // Prevent infinite loop if no targets
+             const MAX_ATTEMPTS = 50;
 
              while (numSabotaged > 0 && enemies.length > 0 && attempts < MAX_ATTEMPTS) {
                  attempts++;
                  const victimIndex = Math.floor(Math.random() * enemies.length);
                  const victim = enemies[victimIndex];
                  
-                 // Get valid weapons to jam (Firearms only - NOT melee, NOT grenades, NOT equipment)
-                 // Skill must be a Weapon class instance (not Grenade/Equipment) and not Melee (range > 1)
                   const weapons = victim.skills.filter(s => {
                       const def = ALL_SKILLS_DEFS.find((d: { id: string }) => d.id === s.id);
                       if (!def) return false;
-                      // Check if it's a Weapon class (has bursts, capacity, recovery like firearms)
-                      // AND has range > 1 (excludes melee) AND has totalAmmo (firearms have ammo)
                       return (def as any).bursts !== undefined && 
                              (def as any).range > 1 && 
                              (def as any).totalAmmo !== undefined &&
-                             (def as any).totalAmmo !== Infinity; // Exclude melee which has Infinity
+                             (def as any).totalAmmo !== Infinity;
                   });
                  if (weapons.length > 0) {
-                     // Pick a weapon that isn't already jammed
                      if (!context.jammedWeapons.has(victim.id)) context.jammedWeapons.set(victim.id, []);
                      const jammedList = context.jammedWeapons.get(victim.id)!;
                      
@@ -998,12 +967,11 @@ const Saboteur: SkillImplementation = {
                      if (availableWeapons.length > 0) {
                          const weapon = availableWeapons[Math.floor(Math.random() * availableWeapons.length)];
                          jammedList.push(weapon.id);
-                         // Sync to Trooper object for UI
                          if (!victim.jammedWeapons) victim.jammedWeapons = [];
-                         if (!victim.sabotagedWeapons) victim.sabotagedWeapons = []; // Init Sabotage List
+                         if (!victim.sabotagedWeapons) victim.sabotagedWeapons = [];
                          
                          victim.jammedWeapons.push(weapon.id);
-                         victim.sabotagedWeapons.push(weapon.id); // Add to Sabotaged List for Icon logic
+                         victim.sabotagedWeapons.push(weapon.id);
                          
                          context.log.push({
                             time: 0,
@@ -1053,11 +1021,6 @@ const CommsOfficer: SkillImplementation = {
     }
 };
 
-import { getVehicleConfig, type VehicleConfig } from '../vehicles';
-import type { VehicleType } from '../types';
-
-// ... (existing helper function replacement)
-
 // Vehicle Logic Helper
 const deployVehicle = (trooper: Trooper, context: BattleContext, type: VehicleType) => {
     const config = getVehicleConfig(type);
@@ -1093,7 +1056,6 @@ const deployVehicle = (trooper: Trooper, context: BattleContext, type: VehicleTy
             
             if (weaponInstance) {
                 trooper.skills.unshift(weaponInstance);
-                // Set initial ammo if needed (handled in Trooper class typically? or explicit init)
                 if (weaponInstance.totalAmmo > 0) {
                      if (!trooper.ammo) trooper.ammo = {};
                      trooper.ammo[weaponInstance.id] = weaponInstance.capacity; 
@@ -1101,20 +1063,13 @@ const deployVehicle = (trooper: Trooper, context: BattleContext, type: VehicleTy
                      trooper.reserves[weaponInstance.id] = weaponInstance.totalAmmo;
                 }
                 
-                // Set as primary if it's the first one or a cannon
                 if (!trooper.currentWeaponId || wId.includes('cannon')) {
                     trooper.currentWeaponId = weaponInstance.id;
                 }
             }
         });
         
-        context.log.push({
-            time: 0,
-            actorId: trooper.id,
-            actorName: trooper.name,
-            action: 'deploy',
-            message: `${trooper.name} rolls out in a ${config.name}!`
-        });
+        // NO EXTRA LOG: Main deploy log will mention the vehicle.
     }
 };
 
@@ -1143,7 +1098,6 @@ const Motorcycle: SkillImplementation = {
     id: 'motorcycle',
     onBattleStart: (trooper: Trooper, context: BattleContext) => {
         deployVehicle(trooper, context, 'motorcycle');
-        // Initiative bonus handled in deployVehicle via config
     }
 };
 

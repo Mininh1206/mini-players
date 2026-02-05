@@ -3,6 +3,7 @@ import type { BattleResult, BattleLogEntry, TrooperData } from '@/logic/minitroo
 import { Trooper } from '@/logic/minitroopers/classes/Trooper';
 import { BattleMap } from '@/logic/minitroopers/systems/BattleMap';
 import { EffectFactory } from '@/logic/minitroopers/systems/VisualEffects';
+import { BattleAnimations } from './BattleAnimations';
 
 export class BattleScene extends Phaser.Scene {
     private battleResult: BattleResult;
@@ -19,6 +20,7 @@ export class BattleScene extends Phaser.Scene {
     public onTimeUpdate?: (time: number) => void;
     
     // Core Logic
+    private static readonly TICKS_PER_SECOND = 30; // 30 ticks/s = ~33ms per tick. Cinematic pacing.
     private battleTime: number = 0;
     private speedMultiplier: number = 1;
     
@@ -44,6 +46,9 @@ export class BattleScene extends Phaser.Scene {
     private communicationsB: number = 0;
     private sabotageA: number = 0;
     private sabotageB: number = 0;
+    
+    private animations!: BattleAnimations;
+    public onActionStart?: (log: BattleLogEntry) => void;
 
     constructor() {
         super('BattleScene');
@@ -133,6 +138,8 @@ export class BattleScene extends Phaser.Scene {
         this.createHUD();
         this.scale.on('resize', this.resize, this);
         this.resize({ width: this.scale.width, height: this.scale.height });
+        
+        this.animations = new BattleAnimations(this);
     }
 
     private createHUD() {
@@ -237,9 +244,33 @@ export class BattleScene extends Phaser.Scene {
     update(time: number, delta: number) {
         if (this.isPaused) return;
 
-        // 1. Advance Logical Time
-        // Reduced from 100 to 50 to make the battle easier to follow (0.5x real time)
-        const ticksPerFrame = (delta / 1000) * 50 * this.speedMultiplier;
+        // 1. Advance Logical Time (Throttled)
+        
+        // Check for lagging actors to prevent time drift (Visuals vs Simulation)
+        let minPendingTime = Infinity;
+        this.actionQueues.forEach((queue, actorId) => {
+            if (queue.length > 0) {
+                 // If actor is busy, their next action is "blocked" visually.
+                 // We consider the time of the *next* action in their queue.
+                 const nextLog = queue[0];
+                 if (nextLog.time < minPendingTime) {
+                     minPendingTime = nextLog.time;
+                 }
+            }
+        });
+
+        // If the oldest pending action is significantly behind current battleTime, slow down.
+        // Allow drift (50 ticks = 0.5s) for fluidity, use gradual slowdown instead of hard freeze.
+        const MAX_DRIFT = 50; // 0.5s drift allowed before slowdown
+        const drift = this.battleTime - minPendingTime;
+        
+        // Calculate slowdown factor: 1.0 when no drift, approaching 0 when very behind
+        let speedFactor = 1.0;
+        if (drift > MAX_DRIFT && minPendingTime !== Infinity) {
+            speedFactor = Math.max(0.1, 1 - ((drift - MAX_DRIFT) / 100));
+        }
+
+        const ticksPerFrame = (delta / 1000) * BattleScene.TICKS_PER_SECOND * this.speedMultiplier * speedFactor;
         this.battleTime += ticksPerFrame;
         
         // Notify listeners of time update (for progressive log)
@@ -361,15 +392,22 @@ export class BattleScene extends Phaser.Scene {
     private playAction(log: BattleLogEntry) {
         const actorId = log.actorId;
         this.isActorBusy.set(actorId, true);
+        
+        // Notify UI immediately (for log sync)
+        if (this.onActionStart) this.onActionStart(log);
 
         const onComplete = () => {
              this.isActorBusy.set(actorId, false);
         };
         
+        this.animations.setSpeed(this.speedMultiplier); // Sync Speed
+        
         if (log.action === 'deploy') {
             this.handleDeploy(log, onComplete);
             return;
         }
+
+        this.applyLogEffects(log);
 
         const actor = this.troopers.get(actorId);
         if (!actor) {
@@ -378,86 +416,152 @@ export class BattleScene extends Phaser.Scene {
         }
 
         switch (log.action) {
-            case 'move': this.animateMove(actor, log, onComplete); break;
-            case 'attack': this.animateAttack(actor, log, onComplete); break;
-            case 'switch_weapon': this.animateSwitch(actor, log, onComplete); break;
-            case 'reload': this.animateReload(actor, log, onComplete); break;
+            case 'move': this.animations.animateMove(actor, log, onComplete); break;
+            case 'attack': this.animations.animateAttack(actor, log, (id) => this.troopers.get(id), onComplete); break;
+            case 'switch_weapon': this.animations.animateSwitch(actor, log, onComplete); break;
+            case 'reload': this.animations.animateReload(actor, log, onComplete); break;
             case 'wait': 
-                if (log.message.includes('dies')) this.animateDeath(actor, log, onComplete);
+                if (log.message.includes('dies')) this.animations.animateDeath(actor, log, onComplete);
                 else this.time.delayedCall(200 / this.speedMultiplier, onComplete);
                 break;
-            case 'heal': this.animateHeal(actor, log, onComplete); break;
-            case 'sabotage': this.animateSabotage(actor, log, onComplete); break;
+            case 'heal': this.animations.animateHeal(actor, log, onComplete); break;
+            case 'sabotage': this.animations.animateSabotage(actor, log, onComplete); break;
             default: onComplete();
+        }
+    }
+
+    private applyLogEffects(log: BattleLogEntry) {
+        // Apply state changes from log to container data immediately
+        if (log.actorId) {
+            const actor = this.troopers.get(log.actorId);
+            if (actor) {
+                 // Update Weapon
+                 if (log.data?.currentWeaponId) {
+                     actor.setData('currentWeaponId', log.data.currentWeaponId);
+                 } else if (log.action === 'switch_weapon' && log.data?.weaponId) {
+                     actor.setData('currentWeaponId', log.data.weaponId);
+                 }
+                 
+                 // Update Ammo (Decrement)
+                 if (log.action === 'attack' && log.data?.weaponId) {
+                     const wId = log.data.weaponId;
+                     const current = actor.getData(`ammo_${wId}`);
+                     if (current !== undefined && current > 0) {
+                         actor.setData(`ammo_${wId}`, current - 1);
+                     }
+                 }
+                 // Update Ammo (Reload)
+                 if (log.action === 'reload') {
+                     const wId = actor.getData('currentWeaponId');
+                     if (wId) {
+                        const cur = actor.getData(`ammo_${wId}`) || 0;
+                        actor.setData(`ammo_${wId}`, cur + 1); // Simple +1 for now, or use max capacity if in data?
+                     }
+                 }
+            }
+        }
+        
+        if (log.targetId) {
+             const target = this.troopers.get(log.targetId);
+             if (target) {
+                 // Damage
+                 if (log.damage) {
+                     const currentHp = target.getData('hp') || 0;
+                     const newHp = Math.max(0, currentHp - log.damage);
+                     target.setData('hp', newHp);
+                 }
+                 // Heal
+                 if (log.heal) {
+                     const currentHp = target.getData('hp') || 0;
+                     const maxHp = target.getData('maxHp') || 10;
+                     target.setData('hp', Math.min(maxHp, currentHp + log.heal));
+                 }
+                 // Wounds
+                 if (log.hitLocation) {
+                    const wounds = target.getData('wounds') || {};
+                    switch(log.hitLocation) {
+                        case 'head': wounds.head = true; break;
+                        case 'torso': wounds.chest = true; break;
+                        case 'arm': wounds.leftArm = true; break; // Simplified
+                        case 'leg': wounds.leftLeg = true; break;
+                    }
+                    target.setData('wounds', wounds);
+                 }
+                 // Sabotage/Jam
+                 if (log.action === 'jam_weapon' && log.data?.weaponId) {
+                     const list = target.getData('jammedWeapons') || [];
+                     if (!list.includes(log.data.weaponId)) {
+                         target.setData('jammedWeapons', [...list, log.data.weaponId]);
+                     }
+                 }
+                 // Eject
+                 if (log.action === 'eject') {
+                    // Visual update for vehicle removed handled by next draw? Or we should force redraw?
+                    // We can re-call drawTrooper? 
+                    // But drawTrooper needs full data.
+                    // For now, next update or specific event handling.
+                 }
+             }
         }
     }
 
     private handleDeploy(log: BattleLogEntry, onComplete: () => void) {
         if (this.troopers.has(log.actorId)) {
+            // Already deployed?
             onComplete();
             return;
         }
 
         const def = this.allTroopersMap.get(log.actorId);
         const team = def?.team || 'A';
-        const color = team === 'A' ? 0x00ff00 : 0xff0000;
         
         let x = 400, y = 300;
         
-        // Find the LAST deploy log entry for this trooper (spy skill creates a second entry with updated position)
-        const deployEntries = this.battleResult.log.filter(l => 
-            l.action === 'deploy' && l.actorId === log.actorId && l.targetPosition
-        );
-        const finalDeployEntry = deployEntries[deployEntries.length - 1] || log;
+        // Find the LAST deploy log entry for this trooper (spy skill used to create second, now fixed. But we check anyway)
+        // We use the current log's targetPosition as source of truth.
         
-        if (finalDeployEntry.targetPosition) {
-             x = 50 + (finalDeployEntry.targetPosition.x / 1000) * 700;
-             y = 100 + finalDeployEntry.targetPosition.y; 
+        if (log.targetPosition) {
+             x = 50 + (log.targetPosition.x / 1000) * 700;
+             y = 100 + log.targetPosition.y; 
         }
 
-        // Make Spies deploy on enemy side logic if needed, but 'targetPosition' should already reflect this from simulation logs.
-        
         const container = this.add.container(x, y);
-        // Circular hitbox matching trooper body (radius 15, centered at trooper)
-        const hitArea = new Phaser.Geom.Circle(0, 0, 15);
+        // Hitbox based on vehicle or default
+        const hitRadius = log.data?.vehicle ? 20 : 15;
+        const hitArea = new Phaser.Geom.Circle(0, 0, hitRadius);
         container.setInteractive(hitArea, Phaser.Geom.Circle.Contains);
         
         container.on('pointerdown', () => {
-             // Emit ID, UI handles selection toggle
              if (this.onTrooperClick) this.onTrooperClick(log.actorId);
         });
 
         // Hover Effect
         container.on('pointerover', () => {
-            document.body.style.cursor = 'pointer';
-            this.tweens.add({
-                targets: container,
-                scale: 2.2, // 2.0 * 1.1
-                duration: 100
-            });
+             document.body.style.cursor = 'pointer';
+             this.tweens.add({
+                 targets: container,
+                 scale: 2.2,
+                 duration: 100
+             });
         });
 
         container.on('pointerout', () => {
-            document.body.style.cursor = 'default';
+             document.body.style.cursor = 'default';
              this.tweens.add({
-                targets: container,
-                scale: 2.0,
-                duration: 100
-            });
+                 targets: container,
+                 scale: 2.0,
+                 duration: 100
+             });
         });
 
-        const gfx = this.add.graphics();
-        gfx.fillStyle(color, 1);
-        gfx.fillCircle(0, 0, 10);
-        
-        // Weapon sprite (line representing equipped weapon)
-        const wpnLine = this.add.graphics();
-        wpnLine.lineStyle(3, 0xcccccc, 1);
-        wpnLine.lineBetween(8, -2, 20, -2); // Default weapon line
-        wpnLine.setName('weaponGfx');
+        // Use Animations Helper to draw
+        this.animations.drawTrooper(container, {
+            team: team,
+            vehicle: log.data?.vehicle,
+            currentWeaponId: def?.currentWeaponId || log.data?.currentWeaponId
+        });
 
-        container.add([gfx, wpnLine]);
-        container.setDepth(1000); // Above pause overlay (999) so troopers can be clicked while paused
+        container.setDepth(1000);
         
         // Initial Data Sync
         container.setData('id', log.actorId);
@@ -474,11 +578,10 @@ export class BattleScene extends Phaser.Scene {
             container.setData('jammedWeapons', def.jammedWeapons || []);
         }
         
-        // Sync sabotagedWeapons from log (sabotage happens BEFORE deploy in simulation)
+        // Sync sabotagedWeapons from log
         const sabotagedFromLog: string[] = [];
         for (const entry of this.battleResult.log) {
-            if (entry.time > log.time) break; // Only check events before/at deploy time
-            // Sabotage events use 'jam_weapon' action in implementations.ts
+            if (entry.time > log.time) break; 
             if (entry.action === 'jam_weapon' && entry.targetId === log.actorId && entry.data?.weaponId) {
                 if (!sabotagedFromLog.includes(entry.data.weaponId)) {
                     sabotagedFromLog.push(entry.data.weaponId);
@@ -491,275 +594,16 @@ export class BattleScene extends Phaser.Scene {
         if (team === 'A') this.deployedCountA++; else this.deployedCountB++;
         
         container.setAlpha(0);
-        container.scale = 0; // Start at 0 for pop-in
+        container.scale = 0; 
         this.tweens.add({
             targets: container,
             alpha: 1,
-            scale: 2.0, // Target Scale 2.0 (bigger troopers)
+            scale: 2.0, 
             duration: 500 / this.speedMultiplier,
             ease: 'Back.out',
             onComplete: () => {
-                this.updateWeaponSprite(container);
                 onComplete();
             }
-        });
-    }
-    
-    private updateWeaponSprite(container: Phaser.GameObjects.Container) {
-        const wpnGfx = container.getByName('weaponGfx') as Phaser.GameObjects.Graphics;
-        if (!wpnGfx) return;
-        
-        const weaponId = container.getData('currentWeaponId') || '';
-        wpnGfx.clear();
-        
-        // Draw weapon based on type
-        if (weaponId.includes('sniper') || weaponId.includes('rifle')) {
-            // Long rifle
-            wpnGfx.lineStyle(3, 0x8b4513, 1); // Brown stock
-            wpnGfx.lineBetween(5, -2, 12, -2);
-            wpnGfx.lineStyle(2, 0x444444, 1); // Metal barrel
-            wpnGfx.lineBetween(12, -2, 28, -2);
-        } else if (weaponId.includes('shotgun')) {
-            // Shotgun
-            wpnGfx.lineStyle(4, 0x444444, 1);
-            wpnGfx.lineBetween(5, -2, 22, -2);
-        } else if (weaponId.includes('pistol') || weaponId.includes('revolver') || weaponId.includes('beretta') || weaponId.includes('eagle')) {
-            // Pistol
-            wpnGfx.lineStyle(3, 0x333333, 1);
-            wpnGfx.lineBetween(8, -2, 16, -2);
-        } else if (weaponId.includes('minigun') || weaponId.includes('machine') || weaponId.includes('gatling')) {
-            // Heavy weapon
-            wpnGfx.lineStyle(5, 0x555555, 1);
-            wpnGfx.lineBetween(5, -2, 25, -2);
-        } else if (weaponId.includes('knife') || weaponId === 'fists') {
-            // Melee - short or no weapon
-            if (weaponId.includes('knife')) {
-                wpnGfx.lineStyle(2, 0xcccccc, 1);
-                wpnGfx.lineBetween(10, -2, 18, -2);
-            }
-            // Fists: no weapon drawn
-        } else if (weaponId.includes('bazooka') || weaponId.includes('rocket') || weaponId.includes('launcher')) {
-            // Launcher
-            wpnGfx.lineStyle(6, 0x2d5016, 1);
-            wpnGfx.lineBetween(5, -2, 26, -2);
-        } else {
-            // Default weapon line
-            wpnGfx.lineStyle(2, 0xaaaaaa, 1);
-            wpnGfx.lineBetween(8, -2, 18, -2);
-        }
-    }
-    
-    // --- ANIMATIONS ---
-    
-    private animateMove(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
-        if (!log.targetPosition) {
-             this.tweens.add({ targets: actor, x: actor.x + 10, duration: 100, yoyo: true, repeat: 2, onComplete });
-             return;
-        }
-
-        const targetX = 50 + (log.targetPosition.x / 1000) * 700;
-        const targetY = 100 + log.targetPosition.y;
-        
-        if (targetX > actor.x) actor.scaleX = 1.5; else actor.scaleX = -1.5;
-
-        this.tweens.add({
-            targets: actor,
-            x: targetX,
-            y: targetY,
-            duration: 800 / this.speedMultiplier,
-            ease: 'Power1',
-            onComplete
-        });
-    }
-
-    private animateAttack(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
-        // Data Sync (Ammo)
-        if (log.data?.weaponId) {
-             const wId = log.data.weaponId;
-             const cur = actor.getData(`ammo_${wId}`) || 0;
-             if (cur > 0) actor.setData(`ammo_${wId}`, cur - 1);
-        }
-
-        const target = log.targetId ? this.troopers.get(log.targetId) : null;
-        let targetX = target ? target.x : (actor.x + 50 * actor.scaleX);
-        let targetY = target ? target.y : actor.y;
-        
-        if (log.targetPosition) {
-             targetX = 50 + (log.targetPosition.x / 1000) * 700;
-             targetY = 100 + log.targetPosition.y;
-        }
-
-        // Logic sync for Sabotage Event (if log has action 'sabotage', or we check for it here)
-        // Since we are inside 'animateAttack', this implies an attack caused sabotage?
-        // No, usually 'sabotage' is a skill use. 
-        // We will add a check if log.action === 'sabotage' in playAction switch, but here we can check if this attack caused sabotage.
-        // Actually, let's just ensure if we see data updates, we apply them.
-        
-        if (log.action === 'sabotage' && log.targetId && log.data?.weaponId) {
-             const t = this.troopers.get(log.targetId);
-             if (t) {
-                 const list = t.getData('sabotagedWeapons') || [];
-                 if (!list.includes(log.data.weaponId)) {
-                     t.setData('sabotagedWeapons', [...list, log.data.weaponId]);
-                     this.showFloatingText(t.x, t.y - 60, "SABOTAGED!", '#ff0000');
-                 }
-             }
-        }
-
-
-        // VFX System
-        const weaponId = log.data?.weaponId || 'default';
-        const effect = EffectFactory.getEffect(weaponId);
-        
-        effect.play(this, actor.x, actor.y, targetX, targetY, () => {
-            // Impact Logic
-            if (log.isMiss) {
-                this.showFloatingText(targetX, targetY - 20, "MISS", '#888');
-            } else if (target) {
-                if (log.damage) {
-                     const currentHp = target.getData('hp') || 0;
-                     const newHp = Math.max(0, currentHp - log.damage);
-                     target.setData('hp', newHp); // Live Update!
-                     this.showFloatingText(target.x, target.y - 40, `-${log.damage}`, '#f00');
-                }
-                if (log.hitLocation) {
-                    const wounds = target.getData('wounds') || {};
-                    switch(log.hitLocation) {
-                        case 'head': w: wounds.head = true; break;
-                        case 'torso': wounds.chest = true; break;
-                        case 'arm': wounds.leftArm = true; break;
-                        case 'leg': wounds.leftLeg = true; break;
-                    }
-                    target.setData('wounds', wounds);
-                }
-            }
-            onComplete();
-        });
-        
-        // Recoil
-        this.tweens.add({
-            targets: actor,
-            x: actor.x - (5 * actor.scaleX),
-            duration: 50 / this.speedMultiplier,
-            yoyo: true
-        });
-    }
-
-    private animateSwitch(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
-        const wId = log.data?.weaponId;
-        const reason = log.data?.reason;
-        
-        // Sabotage Logic
-        if (reason === 'sabotaged') {
-             // Visual text already shown? 
-             this.showFloatingText(actor.x, actor.y - 60, "SABOTAGED!", '#ff0000');
-             
-             // Update Sabotaged State
-             // Note: log.data.weaponId is result weapon. We need to mark 'old' weapon as sabotaged.
-             // We can infer it was the one equipped previously.
-             const oldWap = actor.getData('currentWeaponId');
-             if (oldWap) {
-                 const list = actor.getData('sabotagedWeapons') || [];
-                 if (!list.includes(oldWap)) {
-                     actor.setData('sabotagedWeapons', [...list, oldWap]);
-                 }
-             }
-        }
-        else if (reason === 'jammed') {
-             this.showFloatingText(actor.x, actor.y - 60, "JAMMED!", '#ff8800');
-             const oldWap = actor.getData('currentWeaponId');
-             if (oldWap) {
-                 const list = actor.getData('jammedWeapons') || [];
-                 if (!list.includes(oldWap)) {
-                     actor.setData('jammedWeapons', [...list, oldWap]);
-                 }
-             }
-        }
-
-        actor.setData('currentWeaponId', wId);
-        
-        // Use uniform scale animation to avoid oval shape
-        const currentScale = actor.scaleX; // Should be 2.0
-        this.tweens.add({
-            targets: actor,
-            scale: currentScale * 0.85, // Slight shrink effect
-            duration: 80 / this.speedMultiplier,
-            yoyo: true,
-            onComplete: () => {
-                actor.setScale(currentScale); // Ensure scale is reset properly
-                this.updateWeaponSprite(actor);
-                onComplete();
-            }
-        });
-    }
-
-    private animateReload(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
-        const wId = actor.getData('currentWeaponId');
-        if (wId) {
-             const cur = actor.getData(`ammo_${wId}`) || 0;
-             actor.setData(`ammo_${wId}`, cur + 1);
-        }
-        
-        this.showFloatingText(actor.x, actor.y - 50, "RELOAD", '#0f0');
-        this.time.delayedCall(300 / this.speedMultiplier, onComplete);
-    }
-    
-    private animateHeal(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
-        const target = log.targetId ? this.troopers.get(log.targetId) : null;
-        if (target) {
-             this.tweens.add({
-                 targets: actor,
-                 x: target.x,
-                 duration: 300 / this.speedMultiplier,
-                 yoyo: true,
-                 onComplete: () => {
-                     const cur = target.getData('hp') || 0;
-                     const max = target.getData('maxHp') || 10;
-                     target.setData('hp', Math.min(max, cur + (log.heal || 0)));
-                     this.showFloatingText(target.x, target.y - 50, `+${log.heal}`, '#0f0');
-                     onComplete();
-                 }
-             });
-        } else {
-            onComplete();
-        }
-    }
-
-    private animateDeath(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
-        this.showFloatingText(actor.x, actor.y - 50, "DEAD", '#666');
-        actor.setData('hp', 0);
-        this.tweens.add({
-            targets: actor,
-            alpha: 0.5,
-            angle: 90,
-            y: actor.y + 20,
-            duration: 500 / this.speedMultiplier,
-            onComplete: () => {
-                 onComplete();
-            }
-        });
-    }
-
-    private animateSabotage(actor: Phaser.GameObjects.Container, log: BattleLogEntry, onComplete: () => void) {
-        if (log.targetId && log.data?.weaponId) {
-            const target = this.troopers.get(log.targetId);
-            if (target) {
-                this.showFloatingText(target.x, target.y - 60, "SABOTAGED!", '#ff0000');
-                const list = target.getData('sabotagedWeapons') || [];
-                if (!list.includes(log.data.weaponId)) {
-                    target.setData('sabotagedWeapons', [...list, log.data.weaponId]);
-                }
-            }
-        }
-        
-        // Saboteur visual cue
-        this.showFloatingText(actor.x, actor.y - 40, "SABOTAGE", '#ffff00');
-        this.tweens.add({
-            targets: actor,
-            y: actor.y - 10,
-            yoyo: true,
-            duration: 200 / this.speedMultiplier,
-            onComplete
         });
     }
 

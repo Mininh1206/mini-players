@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import Phaser from 'phaser';
 import { BattleScene } from './scenes/BattleScene';
 import BootScene from './scenes/BootScene';
-import type { BattleResult, Trooper } from '@/logic/minitroopers/types';
+import type { BattleResult, Trooper, BattleLogEntry } from '@/logic/minitroopers/types';
 import BattleInspector from './ui/BattleInspector';
 import { useTranslation } from '@/logic/minitroopers/i18n';
 import { mergeTrooperData } from '@/logic/minitroopers/utils';
@@ -13,9 +13,10 @@ interface MiniTroopersGameProps {
     opponentSquad?: Trooper[];
     translations?: Record<string, string>;
     onBattleTimeUpdate?: (time: number) => void;
+    onLogEntry?: (log: BattleLogEntry) => void;
 }
 
-const MiniTroopersGame: React.FC<MiniTroopersGameProps> = ({ battleResult, mySquad, opponentSquad, translations, onBattleTimeUpdate }) => {
+const MiniTroopersGame: React.FC<MiniTroopersGameProps> = ({ battleResult, mySquad, opponentSquad, translations, onBattleTimeUpdate, onLogEntry }) => {
     const gameContainer = useRef<HTMLDivElement>(null);
     const gameInstance = useRef<Phaser.Game | null>(null);
     const [inspectedTrooper, setInspectedTrooper] = React.useState<Trooper | null>(null);
@@ -102,6 +103,40 @@ const MiniTroopersGame: React.FC<MiniTroopersGameProps> = ({ battleResult, mySqu
                     if (timeUpdateRef.current) {
                         newScene.onTimeUpdate = timeUpdateRef.current;
                     }
+
+                    // Intercept log entry to update Inspector
+                    newScene.onActionStart = (log: BattleLogEntry) => {
+                        // 1. Pass to parent (Simulator View)
+                        if (onLogEntry) onLogEntry(log);
+
+                        // 2. Update Inspected Trooper if active
+                        setInspectedTrooper(prev => {
+                            // Only update if we are inspecting someone, and the log relates to them
+                            // (Either they are actor or target, or global event)
+                            if (!prev) return null;
+
+                            // Optimization: Only update if relevant? 
+                            // Validating all updates ensures we catch side effects (e.g. splash damage)
+                            // Safest to always update if inspecting.
+                            const liveData = newScene.getTrooperData(prev.id);
+                            if (liveData) {
+                                // We need to merge with original def to keep skills/static data
+                                // But getTrooperData already merges?
+                                // getTrooperData returns full object with current stats.
+                                // But wait, getTrooperData returns TrooperData (interface), not Trooper (class instance).
+                                // setInspectedTrooper expects Trooper | null.
+                                // We might need to merge carefully or cast.
+                                // Utils 'mergeTrooperData' handles this?
+
+                                // We need the original definition to merge effectively
+                                const def = [...(mySquad || []), ...(opponentSquad || [])].find(t => t.id === prev.id);
+                                if (def) {
+                                    return mergeTrooperData(def, liveData);
+                                }
+                            }
+                            return prev;
+                        });
+                    };
                 });
             };
 

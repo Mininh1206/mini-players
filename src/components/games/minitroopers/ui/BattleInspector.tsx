@@ -36,7 +36,7 @@ const useLiveTrooperData = (scene: Phaser.Scene, initialData: TrooperData) => {
             }
         };
 
-        const interval = setInterval(fetch, 100);
+        const interval = setInterval(fetch, 50);
         return () => clearInterval(interval);
     }, [scene, data.id]);
 

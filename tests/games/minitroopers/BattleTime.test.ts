@@ -79,16 +79,16 @@ describe('BattleScene Time & Speed', () => {
         scene.setSpeed(1);
         
         // Update with 1000ms delta (1 sec)
-        // Logic: 10 ticks per second * speed 1 = 10 ticks
+        // Logic: 30 ticks per second * speed 1 = 30 ticks
         scene.update(0, 1000);
         
-        expect(Math.floor((scene as any).battleTime)).toBe(10);
+        expect(Math.floor((scene as any).battleTime)).toBe(30);
         
         // Speed 2
         scene.setSpeed(2);
         scene.update(0, 1000); // Another second
-        // Should add 20 ticks
-        expect(Math.floor((scene as any).battleTime)).toBe(30); // 10 + 20
+        // Should add 60 ticks
+        expect(Math.floor((scene as any).battleTime)).toBe(90); // 30 + 60
     });
     
     it('should update time text', () => {
@@ -115,14 +115,14 @@ describe('BattleScene Time & Speed', () => {
     it('should NOT block timer when animations are active (Fluidity Check)', () => {
         // Mock active animations
         (scene as any).activeAnimations = 5;
-        (scene as any).battleTime = 100;
+        (scene as any).battleTime = 30;
         
         // Update
         scene.update(0, 1000);
         
         // Should ADVANCE even with active animations
-        // Previous logic: would return early, so time would remain 100.
-        // New logic: should be 110.
-        expect(Math.floor((scene as any).battleTime)).toBe(110);
+        // Previous logic: would return early, so time would remain 30.
+        // New logic: should be 60 (30 + 30 ticks in 1 second).
+        expect(Math.floor((scene as any).battleTime)).toBe(60);
     });
 });
